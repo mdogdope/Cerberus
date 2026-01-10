@@ -1,19 +1,19 @@
-# 🛡️ SafeScreen
+# Cerberus
 *A Local-First Parental Monitoring System*
 
 > **Protect what matters most — without sacrificing privacy.**  
-> SafeScreen continuously monitors a child’s screen for inappropriate content, saves full screenshots and cropped detections, and alerts parents in real time.  
+> Cerberus continuously monitors a child’s screen for inappropriate content, saves full screenshots and cropped detections, and alerts parents in real time.  
 > Everything runs **locally**, ensuring data never leaves your home network.
 
 ---
 
-## ✨ Core Features
-- 🖥️ **Continuous Screen Monitoring** – Detects NSFW or inappropriate images in real time.  
-- 🔍 **AI-Powered Detection** – Uses locally hosted models (PyTorch-based).  
-- ⚡ **Instant Alerts** – Sends notifications via **Discord Webhooks** (free and easy to set up).  
-- 🔒 **Local-Only Web Portal** – View events securely on your LAN (no cloud dependencies).  
-- 🎚️ **Adjustable Sensitivity** – Tune model thresholds for stricter or more lenient detection.  
-- 🔗 **Client Connection Watchdog** – Detects if the monitored PC goes offline or disables monitoring.  
+## Core Features
+- **Continuous Screen Monitoring** – Detects NSFW or inappropriate images in real time.  
+- **AI-Powered Detection** – Uses locally hosted models (PyTorch-based).  
+- **Instant Alerts** – Sends notifications via **Discord Webhooks** (eventually be replaced with dedicated app).  
+- **Local-Only Web Portal** – View events securely on your LAN (no cloud dependencies).  
+- **Adjustable Sensitivity** – Tune model thresholds for stricter or more lenient detection.  
+- **Client Connection Watchdog** – Detects if the monitored PC goes offline or disables monitoring.  
 
 ---
 
@@ -28,7 +28,6 @@
 ### **Client**
 - Installed on the monitored PC.  
 - Captures screen images and securely transmits them to the local server.  
-- Responds to periodic network “heartbeat” checks to confirm monitoring activity.
 
 All communications are local and encrypted — nothing ever leaves your private network.
 
@@ -71,10 +70,10 @@ All communications are local and encrypted — nothing ever leaves your private 
 ## 🪜 Installation
 > **Installers Coming Soon**
 
-SafeScreen will include graphical installers for Windows and Linux.  
+Cerberus will include graphical installers for Windows and Linux.  
 Until then, developers can clone the repository and manually install dependencies:
 
 ```bash
-git clone https://github.com/mdogdope/SafeScreen.git
-cd SafeScreen
+git clone https://github.com/mdogdope/Cerberus.git
+cd Cerberus
 pip install -r requirements.txt
