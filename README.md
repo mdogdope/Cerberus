@@ -17,7 +17,7 @@
 
 ---
 
-## 🧠 System Architecture
+## System Architecture
 
 ### **Server**
 - Hosts the NSFW detection models.  
@@ -33,20 +33,20 @@ All communications are local and encrypted — nothing ever leaves your private 
 
 ---
 
-## 🛣️ Future Roadmap
+## Future Roadmap
 | Feature | Description |
 |:--|:--|
-| 🔄 **Interactive Learning** | Parents can mark detections as correct/incorrect to fine-tune the model. |
-| 💬 **Text & Chat OCR** | Detect inappropriate or unsafe text on screen. |
-| ⚙️ **App Control** | Identify and manage allowed or blocked applications. |
-| 📱 **Mobile App (Android)** | Control and view logs from your phone. |
-| 🎙️ **Audio/Voice Monitoring** | Detect suspicious voice chat or content via local transcription. |
-| 🧩 **Dynamic Slang Database** | Automatically update detection vocabularies for modern risks. |
-| 💿 **Custom Linux ISO** | Simplified turnkey setup for the server. |
+| **Interactive Learning** | Parents can mark detections as correct/incorrect to fine-tune the model. |
+| **Text & Chat OCR** | Detect inappropriate or unsafe text on screen. |
+| **App Control** | Identify and manage allowed or blocked applications. |
+| **Mobile App (Android)** | Control and view logs from your phone. |
+| **Audio/Voice Monitoring** | Detect suspicious voice chat or content via local transcription. |
+| **Dynamic Slang Database** | Automatically update detection vocabularies for modern risks. |
+| **Custom Linux ISO** | Simplified turnkey setup for the server. |
 
 ---
 
-## 🧰 Built With
+## Built With
 - **Python 3.11+**  
 - **PyTorch** – AI model inference  
 - **OpenCV** – Image processing  
@@ -55,19 +55,19 @@ All communications are local and encrypted — nothing ever leaves your private 
 
 ---
 
-## 🧩 Supported Platforms
+## Supported Platforms
 | Component | Windows | Linux | Android | macOS / iOS |
 |:--|:--:|:--:|:--:|:--:|
 | Server | ✅ | ✅ | ❌ | ⚙️ Manual only |
 | Client | ✅ | ✅ | ❌ | ⚙️ Manual only |
 | Web Portal | ✅ | ✅ | ✅ (app planned) | ⚙️ Manual only |
 
-> 🧱 Installers will be available for Windows and Linux.  
+> Installers will be available for Windows and Linux.  
 > Android app for the portal is planned once the base system stabilizes.
 
 ---
 
-## 🪜 Installation
+## Installation
 > **Installers Coming Soon**
 
 Cerberus will include graphical installers for Windows and Linux.  
