@@ -58,6 +58,54 @@ class NSFWImageDetector:
 		self.model.eval()
 		return self
 	
+	def unload(self):
+		"""Unload the model and free resources.
+	
+		The method clears references to the processor, model and device and
+		invokes Python's garbage collector.  If CUDA is available it also
+		empties the GPU cache and performs IPC collection to ensure that no
+		memory remains allocated.
+		"""
+		if self.model is None and self.processor is None:
+			return
+		
+		self.model = None
+		self.processor = None
+		self.device = None
+		
+		gc.collect()
+		
+		if torch.cuda.is_available():
+			torch.cuda.empty_cache()
+			torch.cuda.ipc_collect()
+	
+	def is_model_downloaded(self) -> bool:
+		"""
+		Check if the model files are present in the cache directory.
+		
+		Returns
+		-------
+		bool
+			``True`` when the ``./models/hf`` directory exists and contains at least one file, otherwise ``False``.
+		"""
+		try:
+			snapshot_download(
+				repo_id=NSFWImageDetector.MODEL_ID,
+				revision=None,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
+			return True
+		except LocalEntryNotFoundError:
+			return False
+	
+	def download_model(self) -> None:
+		snapshot_download(
+			repo_id=NSFWImageDetector.MODEL_ID,
+			revision=None,
+			cache_dir=self.cache_dir
+		)
+	
 	def classify(self, image: Image.Image, top_k: Optional[int] = None, sort: bool = False, empty_cuda_cache: bool = False):
 		"""Classify an image for NSFW content.
 	
@@ -148,51 +196,5 @@ class NSFWImageDetector:
 			if empty_cuda_cache and torch.cuda.is_available():
 				torch.cuda.empty_cache()
 	
-	def unload(self):
-		"""Unload the model and free resources.
 	
-		The method clears references to the processor, model and device and
-		invokes Python's garbage collector.  If CUDA is available it also
-		empties the GPU cache and performs IPC collection to ensure that no
-		memory remains allocated.
-		"""
-		if self.model is None and self.processor is None:
-			return
-		
-		self.model = None
-		self.processor = None
-		self.device = None
-		
-		gc.collect()
-		
-		if torch.cuda.is_available():
-			torch.cuda.empty_cache()
-			torch.cuda.ipc_collect()
-	
-	def is_model_downloaded(self) -> bool:
-		"""
-		Check if the model files are present in the cache directory.
-		
-		Returns
-		-------
-		bool
-			``True`` when the ``./models/hf`` directory exists and contains at least one file, otherwise ``False``.
-		"""
-		try:
-			snapshot_download(
-				repo_id=NSFWImageDetector.MODEL_ID,
-				revision=None,
-				cache_dir=self.cache_dir,
-				local_files_only=True
-			)
-			return True
-		except LocalEntryNotFoundError:
-			return False
-	
-	def download_model(self) -> None:
-		snapshot_download(
-			repo_id=NSFWImageDetector.MODEL_ID,
-			revision=None,
-			cache_dir=self.cache_dir
-		)
 
