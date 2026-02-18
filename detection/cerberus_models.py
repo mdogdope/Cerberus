@@ -1,6 +1,6 @@
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 import torch, gc
-from typing import Optional
+from typing import Optional, Any
 from PIL import Image
 from huggingface_hub import snapshot_download
 from huggingface_hub.errors import LocalEntryNotFoundError
@@ -43,13 +43,13 @@ class NSFWImageDetector:
 		"""
 		self.processor = AutoImageProcessor.from_pretrained(
 			NSFWImageDetector.MODEL_ID,
-			cache_dir=self.cache_dir",
+			cache_dir=self.cache_dir,
 			local_files_only=True
 		)
 		
 		self.model = AutoModelForImageClassification.from_pretrained(
 			NSFWImageDetector.MODEL_ID,
-			cache_dir=self.cache_dir",
+			cache_dir=self.cache_dir,
 			local_files_only=True
 		)
 		
@@ -58,7 +58,7 @@ class NSFWImageDetector:
 		self.model.eval()
 		return self
 	
-	def unload(self):
+	def unload(self) -> None:
 		"""Unload the model and free resources.
 	
 		The method clears references to the processor, model and device and
@@ -78,6 +78,19 @@ class NSFWImageDetector:
 		if torch.cuda.is_available():
 			torch.cuda.empty_cache()
 			torch.cuda.ipc_collect()
+	
+	def is_loaded(self) -> bool:
+		"""
+		Returns whether the underlying model has been initialized.
+
+		This method simply checks if the internal `model` reference
+		has been populated. It does not verify device placement,
+		weights validity, or runtime readiness.
+
+		Returns:
+			bool: True if a model instance is present, otherwise False.
+		"""
+		return self.model is not None
 	
 	def is_model_downloaded(self) -> bool:
 		"""
@@ -106,7 +119,7 @@ class NSFWImageDetector:
 			cache_dir=self.cache_dir
 		)
 	
-	def classify(self, image: Image.Image, top_k: Optional[int] = None, sort: bool = False, empty_cuda_cache: bool = False):
+	def classify(self, image: Image.Image, top_k: Optional[int] = None, sort: bool = False, empty_cuda_cache: bool = False) -> list[dict[str, Any]]:
 		"""Classify an image for NSFW content.
 	
 		Parameters
