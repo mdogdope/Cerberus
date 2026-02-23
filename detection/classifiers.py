@@ -16,6 +16,7 @@ class ImageClassifier:
 			detection_level: ImageDetectionLevel = IDL.NEUTRAL,
 			thresholds: dict[ImageDetectionLevel, float] = {IDL.NEUTRAL:0.0,IDL.LOW:0.0,IDL.MEDIUM:0.0,IDL.HIGH:0.0},
 			cell_count: int = 6):
+	
 		self.image_clf = image_clf
 		self.detection_level = detection_level
 		self.thresholds = thresholds
@@ -48,12 +49,19 @@ class ImageClassifier:
 			
 			
 			# Run Image cells
-			n = self.cell_count
+			nx = self.cell_count
+			ny = self.cell_count
 			w, h = image.size
 			o = 0.5
 			
-			cx = w / n
-			cy = h / n
+			if w/h >= (2*16)/9:
+				nx *= int(w // 1920)
+			
+			if h/w >= (2*9)/16:
+				ny *= int(h // 1080)
+			
+			cx = w / nx
+			cy = h / ny
 			
 			bw = cx * (1 + o)
 			bh = cy * (1 + o)
@@ -61,22 +69,25 @@ class ImageClassifier:
 			bw = min(bw, w)
 			bh = min(bh, h)
 			
-			if n <= 1:
+			if nx <= 1:
 				x_positions = [(w - bw) / 2]
+			else:
+				step_x = (w - bw) / (nx - 1)
+				x_positions = [i * step_x for i in range(nx)]
+			
+			if ny <= 1:
 				y_positions = [(h - bh) / 2]
 			else:
-				step_x = (w - bw) / (n - 1)
-				step_y = (h - bh) / (n - 1)
-				x_positions = [i * step_x for i in range(n)]
-				y_positions = [j * step_y for j in range(n)]
+				step_y = (h - bh) / (ny - 1)
+				y_positions = [j * step_y for j in range(ny)]
 			
 			cells = []
-			for j in range(n):
+			for j in range(ny):
 				y1 = y_positions[j]
 				y2 = y1 + bh
-				# if not ret["passed"]:
-				# 	break
-				for i in range(n):
+				if not ret["passed"]:
+					break
+				for i in range(nx):
 					x1 = x_positions[i]
 					x2 = x1 + bw
 					
@@ -99,3 +110,4 @@ class ImageClassifier:
 	
 	def setDetectionLevel(self, detection_level: ImageDetectionLevel):
 		self.detection_level = detection_level
+
