@@ -1,0 +1,211 @@
+:root{
+	/* Brand */
+	--brand: #4868F8;
+	--brand-2: #6A7CFF;
+
+	/* Neutrals */
+	--bg-0: #070A12;
+	--bg-1: #0B1020;
+
+	--text: #EAF0FF;
+	--muted: #B7C3E6;
+
+	/* Surfaces */
+	--card: rgba(255, 255, 255, 0.06);
+	--stroke: rgba(255, 255, 255, 0.14);
+
+	/* Inputs */
+	--input: rgba(255, 255, 255, 0.08);
+	--input-focus: rgba(72, 104, 248, 0.35);
+
+	/* Effects */
+	--shadow: 0 18px 70px rgba(0, 0, 0, 0.55);
+	--radius: 18px;
+}
+
+*,
+*::before,
+*::after{
+	box-sizing: border-box;
+}
+
+html, body{
+	height: 100%;
+}
+
+body{
+	margin: 0;
+	color: var(--text);
+	font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+	background:
+		radial-gradient(1100px 700px at 18% 18%, rgba(72, 104, 248, 0.28), transparent 60%),
+		radial-gradient(900px 600px at 80% 30%, rgba(106, 124, 255, 0.20), transparent 55%),
+		radial-gradient(900px 700px at 55% 95%, rgba(255, 255, 255, 0.06), transparent 55%),
+		linear-gradient(180deg, var(--bg-0), var(--bg-1));
+	overflow-x: hidden;
+}
+
+.shell{
+	min-height: 100vh;
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	padding: 24px;
+}
+
+.panel{
+	width: 100%;
+	max-width: 560px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 26px;
+}
+
+.card{
+	width: 100%;
+	padding: 34px;
+	border-radius: calc(var(--radius) + 6px);
+	background: var(--card);
+	border: 1px solid var(--stroke);
+	box-shadow: var(--shadow);
+	backdrop-filter: blur(14px);
+	-webkit-backdrop-filter: blur(14px);
+}
+
+.brandMini{
+	display: flex;
+	align-items: center;
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+.brandMini__logo{
+	width: 52px;
+	height: 52px;
+	display: block;
+	object-fit: contain;
+	filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.30));
+}
+
+.brandMini__title{
+	margin: 0;
+	font-size: 26px;
+	letter-spacing: -0.02em;
+	line-height: 1.1;
+}
+
+.brandMini__subtitle{
+	margin: 6px 0 0 0;
+	font-size: 14px;
+	color: var(--muted);
+}
+
+.form{
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.field{
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.label{
+	font-size: 13px;
+	color: var(--muted);
+}
+
+.input{
+	width: 100%;
+	padding: 12px 12px;
+	border-radius: 12px;
+	border: 1px solid rgba(255, 255, 255, 0.16);
+	background: var(--input);
+	color: var(--text);
+	outline: none;
+	transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+
+.input:focus{
+	border-color: rgba(72, 104, 248, 0.70);
+	box-shadow: 0 0 0 4px var(--input-focus);
+	background: rgba(255, 255, 255, 0.10);
+}
+
+.btn{
+	margin-top: 6px;
+	width: 100%;
+	border: none;
+	border-radius: 14px;
+	padding: 12px 14px;
+	color: white;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	cursor: pointer;
+	background: linear-gradient(135deg, var(--brand), var(--brand-2));
+	box-shadow:
+		0 14px 34px rgba(72, 104, 248, 0.28),
+		0 10px 20px rgba(0, 0, 0, 0.25);
+	transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
+}
+
+.btn:hover{
+	filter: brightness(1.05);
+	transform: translateY(-1px);
+	box-shadow:
+		0 16px 40px rgba(72, 104, 248, 0.32),
+		0 12px 22px rgba(0, 0, 0, 0.28);
+}
+
+.btn:active{
+	transform: translateY(0px);
+	filter: brightness(0.98);
+}
+
+.btn:focus-visible{
+	outline: none;
+	box-shadow:
+		0 0 0 4px rgba(255, 255, 255, 0.12),
+		0 0 0 8px rgba(72, 104, 248, 0.30),
+		0 16px 40px rgba(72, 104, 248, 0.32);
+}
+
+.btnSecondary{
+	border: 1px solid rgba(255,255,255,0.14);
+	border-radius: 14px;
+	padding: 12px 16px;
+	font-weight: 600;
+	cursor: pointer;
+	background: rgba(255,255,255,0.08);
+	color: var(--text);
+	backdrop-filter: blur(8px);
+}
+
+.btnSecondary:hover{
+	background: rgba(255,255,255,0.12);
+}
+
+.btnSecondary:active{
+	transform: translateY(0);
+	background: rgba(255,255,255,0.06);
+}
+
+.btnSecondary:disabled{
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.brandSecondary{
+	opacity: 0.05;
+	pointer-events: none;
+	user-select: none;
+}
+
+.brandSecondary img{
+	width: 140px;
+	height: auto;
+	display: block;
+}

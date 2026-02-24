@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="icon" href="/static/res/CerberusSmall.png">
+	<link rel="stylesheet" href="/static/style.css" />
+	<title>Cerberus | Registration</title>
+	<style>
+		/* Override default 560px panel width from style.css */
+		.panel{
+			width: 100%;
+			max-width: 720px;
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+			gap: 26px;
+		}
+
+		.card{
+			width: 100%;
+		}
+
+		.formActions{
+			display: flex;
+			gap: 12px;
+			align-items: center;
+			justify-content: space-between;
+			margin-top: 14px;
+		}
+
+		.formActions__left,
+		.formActions__right{
+			display: flex;
+			gap: 12px;
+			align-items: center;
+		}
+
+		.inlineNote{
+			margin-top: 8px;
+		}
+	</style>
+</head>
+<body>
+	<main class="shell">
+		<section class="panel">
+
+			<div class="card">
+				<div class="brandMini">
+					<img src="/static/res/Cerberus.png" alt="Cerberus logo" class="brandMini__logo" />
+					<div>
+						<h1 class="brandMini__title">Cerberus Portal</h1>
+						<p class="brandMini__subtitle">Parent Access</p>
+					</div>
+				</div>
+
+				<h2 class="pageTitle">Registration</h2>
+				<p class="muted">Create your parent account.</p>
+
+				<form class="form" method="post" action="/auth/register" autocomplete="on">
+
+					<div class="field">
+						<label class="label" for="username">Username</label>
+						<input class="input" id="username" name="username" type="text" autocomplete="username" required />
+					</div>
+
+					<div class="field">
+						<label class="label" for="display_name">Display Name</label>
+						<input class="input" id="display_name" name="display_name" type="text" autocomplete="name" required />
+						<p class="muted inlineNote">This name will appear in the portal.</p>
+					</div>
+
+					<div class="field">
+						<label class="label" for="password">Password</label>
+						<input class="input" id="password" name="password" type="password" autocomplete="new-password" required />
+					</div>
+
+					<button class="btn" type="submit">
+						Register
+					</button>
+
+				</form>
+			</div>
+
+			<div class="brandSecondary">
+				<img src="/static/res/Cerberus.png" alt="Cerberus shield" />
+			</div>
+
+		</section>
+	</main>
+</body>
+</html>

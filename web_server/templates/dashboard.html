@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="icon" href="/static/res/CerberusSmall.png">
+	<link rel="stylesheet" href="/static/style.css" />
+	<title>Cerberus | Dashboard</title>
+
+	<style>
+		.shell{
+			display:block;
+			padding:32px;
+		}
+
+		.topbar{
+			display:flex;
+			justify-content:space-between;
+			align-items:center;
+			margin-bottom:24px;
+		}
+
+		.grid{
+			display:grid;
+			grid-template-columns:1fr 1fr;
+			gap:20px;
+		}
+
+		@media (max-width:900px){
+			.grid{ grid-template-columns:1fr; }
+		}
+
+		.stats{
+			display:grid;
+			grid-template-columns:repeat(3,1fr);
+			gap:16px;
+			margin-bottom:20px;
+		}
+
+		@media (max-width:900px){
+			.stats{ grid-template-columns:1fr; }
+		}
+
+		.statValue{
+			font-size:28px;
+			margin:0;
+		}
+
+		.table{
+			width:100%;
+			border-collapse:collapse;
+			margin-top:12px;
+		}
+
+		.table th,
+		.table td{
+			padding:12px;
+			text-align:left;
+			border-bottom:1px solid rgba(255,255,255,0.08);
+		}
+
+		.table th{
+			font-size:12px;
+			color:var(--muted);
+			text-transform:uppercase;
+		}
+
+		.badge{
+			padding:4px 10px;
+			border-radius:999px;
+			font-size:12px;
+			border:1px solid rgba(255,255,255,0.14);
+			background:rgba(255,255,255,0.06);
+		}
+
+		.high{ background:linear-gradient(135deg,#FF4D4D,#FF6B6B); color:white; }
+		.med{ background:linear-gradient(135deg,#FFC457,#FFB347); color:black; }
+		.low{ background:linear-gradient(135deg,#4868F8,#6A7CFF); color:white; }
+
+		.mutedSmall{
+			font-size:13px;
+			color:var(--muted);
+		}
+	</style>
+</head>
+
+<body>
+	<main class="shell">
+
+		<div class="topbar">
+			<div class="brandMini" style="margin-bottom:0;">
+				<img src="/static/res/Cerberus.png" alt="Cerberus logo" class="brandMini__logo" />
+				<div>
+					<h1 class="brandMini__title">Cerberus Portal</h1>
+					<p class="brandMini__subtitle">Dashboard</p>
+				</div>
+			</div>
+
+			<form method="post" action="/auth/logout">
+				<button class="btnSecondary" type="submit">Logout</button>
+			</form>
+		</div>
+
+		<div class="stats">
+			<div class="card">
+				<p class="mutedSmall">New events (7 days)</p>
+				<p id="statNew7" class="statValue">0</p>
+			</div>
+
+			<div class="card">
+				<p class="mutedSmall">High severity (7 days)</p>
+				<p id="statHigh7" class="statValue">0</p>
+			</div>
+
+			<div class="card">
+				<p class="mutedSmall">Devices active (24h)</p>
+				<p id="statDevices24" class="statValue">0</p>
+			</div>
+		</div>
+
+		<div class="card">
+			<h2 class="sectionTitle">Recent Events</h2>
+			<p class="mutedSmall">Newest at top</p>
+
+			<div id="eventsContainer">
+				Loading...
+			</div>
+		</div>
+
+	</main>
+
+	<script>
+		var demo_mode = true;
+
+		function getDemoEvents(){
+			const now = Date.now();
+			const h = n => now - n*3600000;
+			const d = n => now - n*86400000;
+
+			return [
+				{ id:"EVT-1001", timestamp:h(2), severity:"high", device:"Kid-PC", type:"image", title:"NSFW image detected" },
+				{ id:"EVT-1002", timestamp:h(5), severity:"med", device:"Kid-Phone", type:"text", title:"Sensitive phrase detected" },
+				{ id:"EVT-1003", timestamp:d(1), severity:"low", device:"Kid-Tablet", type:"system", title:"Device connected" },
+				{ id:"EVT-1004", timestamp:d(3), severity:"high", device:"Kid-Phone", type:"text", title:"Threat keyword detected" }
+			];
+		}
+
+		async function fetchEvents(){
+			if(demo_mode) return getDemoEvents();
+
+			const res = await fetch("/api/events?days=30", {credentials:"include"});
+			return await res.json();
+		}
+
+		function withinDays(ts, days){
+			return ts >= Date.now() - days*86400000;
+		}
+
+		function withinHours(ts, hours){
+			return ts >= Date.now() - hours*3600000;
+		}
+
+		function render(events){
+			events.sort((a,b)=>b.timestamp-a.timestamp);
+
+			const last7 = events.filter(e=>withinDays(e.timestamp,7));
+			const high7 = last7.filter(e=>e.severity==="high");
+			const last24 = events.filter(e=>withinHours(e.timestamp,24));
+
+			document.getElementById("statNew7").textContent = last7.length;
+			document.getElementById("statHigh7").textContent = high7.length;
+
+			const devices = new Set(last24.map(e=>e.device));
+			document.getElementById("statDevices24").textContent = devices.size;
+
+			if(events.length===0){
+				document.getElementById("eventsContainer").innerHTML="No events.";
+				return;
+			}
+
+			let html = `
+				<table class="table">
+					<thead>
+						<tr>
+							<th>Event</th>
+							<th>Device</th>
+							<th>Severity</th>
+							<th>Time</th>
+						</tr>
+					</thead>
+					<tbody>
+			`;
+
+			for(const e of events){
+				const date = new Date(e.timestamp).toLocaleString();
+				html += `
+					<tr>
+						<td>${e.title}</td>
+						<td>${e.device}</td>
+						<td><span class="badge ${e.severity}">${e.severity.toUpperCase()}</span></td>
+						<td>${date}</td>
+					</tr>
+				`;
+			}
+
+			html += "</tbody></table>";
+			document.getElementById("eventsContainer").innerHTML = html;
+		}
+
+		fetchEvents().then(render);
+	</script>
+
+</body>
+</html>
