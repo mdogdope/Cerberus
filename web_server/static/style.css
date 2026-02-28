@@ -45,6 +45,7 @@ body{
 	overflow-x: hidden;
 }
 
+/* Full-page wrapper for centered screens like login, register, or error states. */
 .shell{
 	min-height: 100vh;
 	display: flex;
@@ -53,6 +54,15 @@ body{
 	padding: 24px;
 }
 
+/* Layout variant for top-aligned app pages such as dashboards. */
+.shell--top{
+	display: block;
+	padding: 32px;
+}
+
+
+
+/* Shared vertical page column for grouped content blocks. */
 .panel{
 	width: 100%;
 	max-width: 560px;
@@ -62,6 +72,12 @@ body{
 	gap: 26px;
 }
 
+/* Wider panel option for forms or pages that need more horizontal room. */
+.panel--wide{
+	max-width: 720px;
+}
+
+/* Reusable frosted container for forms, stats, tables, and message boxes. */
 .card{
 	width: 100%;
 	padding: 34px;
@@ -73,6 +89,7 @@ body{
 	-webkit-backdrop-filter: blur(14px);
 }
 
+/* Compact brand header with logo and product text for page intros. */
 .brandMini{
 	display: flex;
 	align-items: center;
@@ -80,6 +97,12 @@ body{
 	margin-bottom: 24px;
 }
 
+/* Removes the default bottom spacing when the brand block sits inside tighter layouts. */
+.brandMini--flush{
+	margin-bottom: 0;
+}
+
+/* Logo image used inside the compact brand header. */
 .brandMini__logo{
 	width: 52px;
 	height: 52px;
@@ -88,6 +111,7 @@ body{
 	filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.30));
 }
 
+/* Main heading inside the compact brand header. */
 .brandMini__title{
 	margin: 0;
 	font-size: 26px;
@@ -95,29 +119,68 @@ body{
 	line-height: 1.1;
 }
 
+/* Supporting text under the compact brand heading. */
 .brandMini__subtitle{
 	margin: 6px 0 0 0;
 	font-size: 14px;
 	color: var(--muted);
 }
 
+/* Shared heading reset for page titles and section headers. */
+.pageTitle,
+.sectionTitle{
+	margin: 0;
+	letter-spacing: -0.02em;
+}
+
+/* Primary page heading for views like registration or auth error pages. */
+.pageTitle{
+	font-size: 28px;
+}
+
+/* Section heading for content areas like dashboard panels. */
+.sectionTitle{
+	font-size: 22px;
+}
+
+/* Low-emphasis helper text for descriptions, hints, and metadata. */
+.muted,
+.mutedSmall{
+	margin: 0;
+	color: var(--muted);
+}
+
+/* Standard helper text size for most supporting copy. */
+.muted{
+	font-size: 14px;
+}
+
+/* Smaller helper text for compact labels and dashboard metadata. */
+.mutedSmall{
+	font-size: 13px;
+}
+
+/* Vertical form stack for grouped inputs and actions. */
 .form{
 	display: flex;
 	flex-direction: column;
 	gap: 16px;
 }
 
+/* Wrapper for a label and its related input or helper text. */
 .field{
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
 }
 
+/* Form label styling for inputs and controls. */
 .label{
 	font-size: 13px;
 	color: var(--muted);
 }
 
+/* Shared text input appearance for login, registration, and future forms. */
 .input{
 	width: 100%;
 	padding: 12px 12px;
@@ -129,15 +192,32 @@ body{
 	transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
 }
 
+/* Focus treatment for shared text inputs. */
 .input:focus{
 	border-color: rgba(72, 104, 248, 0.70);
 	box-shadow: 0 0 0 4px var(--input-focus);
 	background: rgba(255, 255, 255, 0.10);
 }
 
+/* Extra spacing for helper copy placed directly below a field. */
+.inlineNote{
+	margin-top: 8px;
+}
+
+/* Inline error message for validation or authentication failures. */
+.error{
+	margin: 8px 0 0;
+	font-size: 14px;
+	color: #ffb4b4;
+}
+
+/* Primary call-to-action button for main form submits. */
 .btn{
 	margin-top: 6px;
 	width: 100%;
+	display: inline-block;
+	text-align: center;
+	text-decoration: none;
 	border: none;
 	border-radius: 14px;
 	padding: 12px 14px;
@@ -152,6 +232,7 @@ body{
 	transition: transform 120ms ease, filter 120ms ease, box-shadow 120ms ease;
 }
 
+/* Hover state for the primary action button. */
 .btn:hover{
 	filter: brightness(1.05);
 	transform: translateY(-1px);
@@ -160,11 +241,13 @@ body{
 		0 12px 22px rgba(0, 0, 0, 0.28);
 }
 
+/* Pressed state for the primary action button. */
 .btn:active{
 	transform: translateY(0px);
 	filter: brightness(0.98);
 }
 
+/* Keyboard focus state for the primary action button. */
 .btn:focus-visible{
 	outline: none;
 	box-shadow:
@@ -173,6 +256,7 @@ body{
 		0 16px 40px rgba(72, 104, 248, 0.32);
 }
 
+/* Secondary button style for lower-priority actions like logout. */
 .btnSecondary{
 	border: 1px solid rgba(255,255,255,0.14);
 	border-radius: 14px;
@@ -184,28 +268,132 @@ body{
 	backdrop-filter: blur(8px);
 }
 
+/* Hover state for the secondary button. */
 .btnSecondary:hover{
 	background: rgba(255,255,255,0.12);
 }
 
+/* Pressed state for the secondary button. */
 .btnSecondary:active{
 	transform: translateY(0);
 	background: rgba(255,255,255,0.06);
 }
 
+/* Disabled state for the secondary button. */
 .btnSecondary:disabled{
 	opacity: 0.5;
 	cursor: not-allowed;
 }
 
+/* Header row for app screens with branding on one side and actions on the other. */
+.topbar{
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 16px;
+	margin-bottom: 24px;
+}
+
+/* Responsive stat card grid for summary metrics. */
+.stats{
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 16px;
+	margin-bottom: 20px;
+}
+
+/* Large numeric value used inside stat cards. */
+.statValue{
+	margin: 0;
+	font-size: 28px;
+}
+
+/* Shared table styling for structured data lists. */
+.table{
+	width: 100%;
+	margin-top: 12px;
+	border-collapse: collapse;
+}
+
+/* Table cell spacing and separators for the shared data table. */
+.table th,
+.table td{
+	padding: 12px;
+	text-align: left;
+	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Header styling for shared tables. */
+.table th{
+	font-size: 12px;
+	color: var(--muted);
+	text-transform: uppercase;
+}
+
+/* Pill-style label for statuses, severities, and compact metadata. */
+.badge{
+	display: inline-flex;
+	align-items: center;
+	padding: 4px 10px;
+	border-radius: 999px;
+	font-size: 12px;
+	border: 1px solid rgba(255,255,255,0.14);
+	background: rgba(255,255,255,0.06);
+}
+
+/* High-severity badge variant. */
+.badge.high{
+	background: linear-gradient(135deg, #FF4D4D, #FF6B6B);
+	color: white;
+}
+
+/* Medium-severity badge variant. */
+.badge.med{
+	background: linear-gradient(135deg, #FFC457, #FFB347);
+	color: black;
+}
+
+/* Low-severity badge variant. */
+.badge.low{
+	background: linear-gradient(135deg, #4868F8, #6A7CFF);
+	color: white;
+}
+
+/* Decorative low-opacity brand mark for non-interactive page background use. */
 .brandSecondary{
 	opacity: 0.05;
 	pointer-events: none;
 	user-select: none;
 }
 
+/* Image sizing for the decorative secondary brand mark. */
 .brandSecondary img{
 	width: 140px;
 	height: auto;
 	display: block;
+}
+
+.center-text{
+	text-align: center;
+}
+
+@media (max-width: 900px){
+	.stats{
+		grid-template-columns: 1fr;
+	}
+}
+
+@media (max-width: 640px){
+	.shell--top{
+		padding: 24px;
+	}
+
+	.topbar{
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.card{
+		padding: 24px;
+	}
 }

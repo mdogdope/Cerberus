@@ -52,6 +52,10 @@
 						Login
 					</button>
 					
+					{% if error %}
+						<p class="error">Invalid username or password.</p>
+					{% endif %}
+					
 				</form>
 				
 			</div>

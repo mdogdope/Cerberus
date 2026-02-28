@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="icon" href="/static/res/CerberusSmall.png">
+	<link rel="stylesheet" href="/static/style.css" />
+	<title>Cerberus | Authentication Error</title>
+	<Style>
+		.msg {
+			margin-bottom: 18px;
+		}
+	</Style>
+</head>
+<body>
+	<main class="shell">
+		<section class="panel">
+			<div class="card">
+				<h2 class="center-text">Authentication Error</h2>
+				<p class="error center-text msg">{{ message }}</p>
+				<a href="{{ url_for('root') }}" class="btn">
+					Return to Home
+				</a>
+			</div>
+			<div class="brandSecondary">
+				<img src="/static/res/Cerberus.png" alt="Cerberus shield" />
+			</div>
+		</section>
+	</main>
+</body>
+</html>
