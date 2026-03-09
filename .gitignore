@@ -2,4 +2,6 @@
 desktop.ini
 /models
 *test*
-*.db
+*.db*
+/events
+*.json

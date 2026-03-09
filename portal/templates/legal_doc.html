@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{{ title }}</title>
+	<link rel="icon" href="/static/res/CerberusSmall.png">
+	<link rel="stylesheet" href="/static/style.css">
+	<style>
+		.legalFrame{
+			width:100%;
+			max-height:500px;
+			overflow:auto;
+			border-radius:14px;
+			border:1px solid rgba(255,255,255,0.14);
+			background:rgba(255,255,255,0.05);
+			padding:16px;
+			margin-top:12px;
+		}
+
+		.btnRow{
+			margin-top:18px;
+		}
+
+		/* Keep disabled submit clearly greyed out until checkbox is checked. */
+		#submitBtn:disabled{
+			background: rgba(255,255,255,0.14);
+			color: rgba(234,240,255,0.65);
+			box-shadow: none;
+			cursor: not-allowed;
+			filter: none;
+			transform: none;
+		}
+	</style>
+</head>
+
+<body>
+<main class="shell">
+<section class="panel panel--wide">
+<div class="card">
+
+	<header class="brandMini">
+		<div>
+			<h1 class="brandMini__title">{{ title }}</h1>
+			<p class="brandMini__subtitle">Please review this document.</p>
+		</div>
+	</header>
+
+	<form method="post" action="/legal_doc">
+
+		<input type="hidden" name="doc_path" value="{{ doc_path }}">
+		<input type="hidden" name="title" value="{{ title }}">
+
+		<div id="docContainer" class="legalFrame">
+			Loading...
+		</div>
+
+		<label class="check" style="margin-top:14px;">
+			<input class="check__input" id="agree" name="agree" type="checkbox" value="true">
+			<span class="check__box"></span>
+			<span class="check__label">I agree to this document</span>
+		</label>
+
+		<div class="btnRow">
+			<button class="btn" type="submit" id="submitBtn" disabled>
+				Submit
+			</button>
+		</div>
+
+	</form>
+
+</div>
+</section>
+</main>
+
+<script>
+
+const docPath = {{ doc_path | tojson }}
+
+const container = document.getElementById("docContainer")
+
+const agree = document.getElementById("agree")
+const submitBtn = document.getElementById("submitBtn")
+
+async function loadDocument(){
+	const res = await fetch(docPath)
+	container.innerHTML = await res.text()
+}
+loadDocument()
+
+agree.onchange = () => {
+	submitBtn.disabled = !agree.checked
+}
+
+</script>
+
+</body>
+</html>

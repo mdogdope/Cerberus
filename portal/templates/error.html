@@ -1,0 +1,150 @@
+{# templates/error.html #}
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>{{ title or "Error" }}</title>
+	<link rel="icon" href="/static/res/CerberusSmall.png">
+	<link rel="stylesheet" href="/static/style.css" />
+	<style>
+		/* Minimal additions; most styling comes from style.css */
+		.errorBox{
+			min-height: 220px;
+			resize: vertical;
+			font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+			line-height: 1.45;
+			white-space: pre-wrap;
+		}
+
+		.copyRow{
+			margin-top: 12px;
+			display: flex;
+			gap: 12px;
+			align-items: center;
+			justify-content: space-between;
+			flex-wrap: wrap;
+		}
+
+		.copyRow__left{
+			display: inline-flex;
+			gap: 10px;
+			align-items: center;
+			flex-wrap: wrap;
+		}
+
+		.copyStatus{
+			font-size: 13px;
+			color: var(--muted);
+			opacity: 0;
+			transform: translateY(2px);
+			transition: opacity 160ms ease, transform 160ms ease;
+		}
+		.copyStatus.isVisible{
+			opacity: 1;
+			transform: translateY(0);
+		}
+
+		.emailLink{
+			color: var(--text);
+			text-decoration: underline;
+			text-underline-offset: 3px;
+		}
+
+		/* Make secondary buttons look consistent when used side-by-side */
+		.btnSecondary{
+			min-width: 160px;
+		}
+	</style>
+</head>
+
+<body>
+	<div class="shell">
+		<div class="panel panel--wide">
+
+			<div class="card">
+				<div class="brandMini">
+						<img class="brandMini__logo" src="{{ logo_src or '/static/res/Cerberus.png' }}" alt="Logo" />
+					<div>
+						<h1 class="brandMini__title">{{ app_name or "Cerberus" }}</h1>
+						<p class="brandMini__subtitle lg-font">{{ subtitle or "Something went wrong" }}</p>
+					</div>
+				</div>
+
+				<h2 class="pageTitle">{{ title or "Unexpected Error" }}</h2>
+				<p class="muted" style="margin-top: 10px;">
+					Something bad happened. Please copy the error details below and send it to the developer at
+					<a class="emailLink" href="mailto:{{ support_email }}">{{ support_email }}</a>.
+				</p>
+
+				<div class="field" style="margin-top: 18px;">
+					<label class="label" for="error_message">Error details</label>
+					<textarea
+						class="input errorBox"
+						id="error_message"
+						readonly
+						spellcheck="false"
+					>{{ error_msg | default("Unknown error") | e }}</textarea>
+
+					<div class="copyRow">
+						{% if home_href %}
+							<a class="btnSecondary" href="{{ home_href }}">Back</a>
+						{% endif %}
+
+						<div class="copyRow__left">
+							<span class="copyStatus" id="copyStatus">Copied to Clipboard</span>
+							<button class="btnSecondary" type="button" id="copyBtn">Copy Error</button>
+						</div>
+					</div>
+
+					<p class="mutedSmall inlineNote">
+						Tip: include what you were doing right before this happened, plus the time it occurred.
+					</p>
+				</div>
+			</div>
+
+		</div>
+	</div>
+
+	<script>
+		(function(){
+			const btn = document.getElementById("copyBtn");
+			const box = document.getElementById("error_message");
+			const status = document.getElementById("copyStatus");
+
+			let statusTimer = null;
+
+			async function copyText(text){
+				// Prefer modern clipboard API when available/allowed.
+				if (navigator.clipboard && window.isSecureContext){
+					await navigator.clipboard.writeText(text);
+					return;
+				}
+
+				// Fallback for non-secure contexts / older browsers.
+				box.focus();
+				box.select();
+				const ok = document.execCommand("copy");
+				box.setSelectionRange(0, 0);
+				if (!ok) throw new Error("Copy failed");
+			}
+
+			function showStatus(msg){
+				status.textContent = msg;
+				status.classList.add("isVisible");
+				if (statusTimer) clearTimeout(statusTimer);
+				statusTimer = setTimeout(() => status.classList.remove("isVisible"), 1400);
+			}
+
+			btn.addEventListener("click", async () => {
+				try{
+					await copyText(box.value || box.textContent || "");
+					showStatus("Copied to clipboard");
+				}catch(e){
+					showStatus("Copy failed");
+				}
+			});
+		})();
+	</script>
+</body>
+</html>

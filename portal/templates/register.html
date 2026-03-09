@@ -6,11 +6,17 @@
 	<link rel="icon" href="/static/res/CerberusSmall.png">
 	<link rel="stylesheet" href="/static/style.css" />
 	<title>Cerberus | Registration</title>
+	<style>
+		.input.error {
+			border: 1px solid #E5484D;
+			box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.18);
+		}
+	</style>
 </head>
 <body>
 	<main class="shell">
 		<section class="panel panel--wide">
-
+			
 			<div class="card">
 				<div class="brandMini">
 					<img src="/static/res/Cerberus.png" alt="Cerberus logo" class="brandMini__logo" />
@@ -19,32 +25,33 @@
 						<p class="brandMini__subtitle">Parent Access</p>
 					</div>
 				</div>
-
+				
 				<h2 class="pageTitle">Registration</h2>
 				<p class="muted">Create your parent account.</p>
-
+				
 				<form class="form" method="post" action="/auth/register" autocomplete="on">
-
+					
 					<div class="field">
 						<label class="label" for="username">Username</label>
 						<input class="input" id="username" name="username" type="text" autocomplete="username" required />
 					</div>
-
 					<div class="field">
 						<label class="label" for="display_name">Display Name</label>
 						<input class="input" id="display_name" name="display_name" type="text" autocomplete="name" required />
 						<p class="muted inlineNote">This name will appear in the portal.</p>
 					</div>
-
 					<div class="field">
 						<label class="label" for="password">Password</label>
 						<input class="input" id="password" name="password" type="password" autocomplete="new-password" required />
 					</div>
-
+					<div class="field">
+						<label class="label" for="confirm_password">Confirm Password</label>
+						<input class="input" id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required />
+					</div>
 					<button class="btn" type="submit">
 						Register
 					</button>
-
+					
 				</form>
 			</div>
 
@@ -55,4 +62,49 @@
 		</section>
 	</main>
 </body>
+<script>
+	const password = document.getElementById("password");
+	const confirmPassword = document.getElementById("confirm_password");
+	const form = document.querySelector('form[action="/auth/register"]');
+
+	let debounceTimer = null;
+	const DELAY = 400;
+
+	function applyError() {
+		confirmPassword.classList.add("error");
+	}
+
+	function removeError() {
+		confirmPassword.classList.remove("error");
+	}
+
+	function handleInput() {
+		const p = password.value;
+		const c = confirmPassword.value;
+
+		if (p === c && c.length > 0) {
+			clearTimeout(debounceTimer);
+			removeError();
+			return;
+		}
+
+		clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(() => {
+			if (password.value !== confirmPassword.value && confirmPassword.value.length > 0) {
+				applyError();
+			}
+		}, DELAY);
+	}
+
+	password.addEventListener("input", handleInput);
+	confirmPassword.addEventListener("input", handleInput);
+
+	form.addEventListener("submit", (e) => {
+		clearTimeout(debounceTimer);
+		if (password.value !== confirmPassword.value) {
+			applyError();
+			e.preventDefault();
+		}
+	});
+</script>
 </html>
