@@ -89,12 +89,38 @@ body{
 	-webkit-backdrop-filter: blur(14px);
 }
 
-/* Compact brand header with logo and product text for page intros. */
+
+/* Interactive card variant using top-menu style interactions. */
+.card--action{
+	display: block;
+	text-align: left;
+	cursor: pointer;
+	transition: background 140ms ease, border-color 140ms ease, box-shadow 140ms ease, transform 120ms ease;
+}
+
+.card--action:hover,
+.card--action:focus-visible{
+	background: rgba(255,255,255,0.12);
+	border-color: rgba(255,255,255,0.24);
+	box-shadow: 0 22px 50px rgba(0, 0, 0, 0.40);
+	transform: translateY(-1px);
+}
+
+.card--action:active{
+	transform: translateY(0);
+	background: rgba(255,255,255,0.10);
+}
+
+.card--action:focus-visible{
+	outline: none;
+}
 .brandMini{
 	display: flex;
 	align-items: center;
 	gap: 16px;
 	margin-bottom: 24px;
+	text-decoration: none;
+	color: inherit;
 }
 
 /* Removes the default bottom spacing when the brand block sits inside tighter layouts. */
@@ -380,6 +406,110 @@ body{
 	margin-bottom: 24px;
 }
 
+/* User menu wrapper for account actions in the top bar. */
+.userMenu{
+	position: relative;
+	width: 260px;
+}
+
+/* User identity control shown in the top bar. */
+.userMenu__toggle{
+	display: inline-flex;
+	align-items: center;
+	gap: 10px;
+	width: 100%;
+	padding: 12px 16px;
+	border-radius: 14px;
+	border: 1px solid rgba(255, 255, 255, 0.14);
+	background: rgba(255, 255, 255, 0.08);
+	color: var(--text);
+	font-size: 22px;
+	font-weight: 700;
+	line-height: 1;
+	letter-spacing: -0.02em;
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+	user-select: none;
+}
+
+/* Dropdown surface for profile links and logout action. */
+.userMenu__panel{
+	position: absolute;
+	right: 0;
+	top: 100%;
+	width: 100%;
+	padding: 10px;
+	border-radius: 16px;
+	background: rgba(10, 15, 30, 0.95);
+	border: 1px solid var(--stroke);
+	box-shadow: var(--shadow);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	z-index: 20;
+	opacity: 0;
+	transform: translateY(-8px);
+	visibility: hidden;
+	pointer-events: none;
+	transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.userMenu:hover .userMenu__panel{
+	opacity: 1;
+	transform: translateY(0);
+	visibility: visible;
+	pointer-events: auto;
+}
+
+/* Join trigger and panel into a single visual shape while open. */
+.userMenu:hover .userMenu__toggle{
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.userMenu:hover .userMenu__panel{
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+}
+
+/* Action row styling for links in the user menu. */
+.userMenu__item{
+	width: 100%;
+	padding: 10px 12px;
+	text-align: center;
+	border-radius: 12px;
+	font-size: 14px;
+	font-weight: 600;
+	letter-spacing: 0.01em;
+	color: var(--text);
+	border: 1px solid rgba(255,255,255,0.14);
+	background: rgba(255,255,255,0.08);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
+}
+
+.userMenu__item:hover,
+.userMenu__item:focus-visible{
+	background: rgba(255,255,255,0.12);
+}
+
+/* Logout button style adjustment for full-width dropdown action. */
+.userMenu__logout{
+	width: 100%;
+	margin-top: 2px;
+	padding: 10px 12px;
+	border-radius: 12px;
+	font-weight: 600;
+	border-color: rgba(255, 120, 120, 0.40);
+	background: rgba(160, 35, 35, 0.26);
+}
+
+.userMenu__logout:hover{
+	background: rgba(180, 45, 45, 0.30);
+}
+
 /* Responsive stat card grid for summary metrics. */
 .stats{
 	display: grid;
@@ -501,7 +631,24 @@ a:focus-visible{
 		align-items: stretch;
 	}
 
+	.userMenu{
+		width: 100%;
+	}
+
+	.userMenu__toggle{
+		width: 100%;
+		font-size: 20px;
+	}
+
+	.userMenu__panel{
+		position: static;
+		margin-top: 10px;
+		width: 100%;
+	}
+
 	.card{
 		padding: 24px;
 	}
 }
+
+

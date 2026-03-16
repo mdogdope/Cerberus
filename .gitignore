@@ -5,3 +5,5 @@ desktop.ini
 *.db*
 /events
 *.json
+~*
+PROJECT_REQUIREMANTS.txt

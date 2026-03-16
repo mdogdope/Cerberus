@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="icon" href="/static/res/CerberusSmall.png">
+	<link rel="stylesheet" href="/static/style.css" />
+	<title>Cerberus | Settings</title>
+	<style>
+		.settingsGrid {
+			display: grid;
+			grid-template-columns: 1fr;
+			gap: 16px;
+		}
+		
+		.nameRow {
+			display: flex;
+			gap: 10px;
+			align-items: center;
+		}
+		
+		.nameRow .input {
+			flex: 1;
+		}
+		
+		.nameRow .btnSecondary {
+			margin: 0;
+			white-space: nowrap;
+			padding: 12px 18px;
+		}
+		
+		.sectionLead {
+			margin-top: 6px;
+			margin-bottom: 14px;
+		}
+		
+		@media (max-width: 640px) {
+			.nameRow {
+				flex-direction: column;
+				align-items: stretch;
+			}
+			
+			.nameRow .btnSecondary {
+				width: 100%;
+			}
+		}
+	</style>
+</head>
+<body>
+	<main class="shell shell--top">
+		<div class="topbar">
+			<a class="brandMini brandMini--flush" href="/">
+				<img src="/static/res/Cerberus.png" alt="Cerberus logo" class="brandMini__logo" />
+				<div>
+					<h1 class="brandMini__title">Cerberus Portal</h1>
+					<p class="brandMini__subtitle">Settings</p>
+				</div>
+			</a>
+			
+			<div class="userMenu" aria-label="User menu">
+				<div class="userMenu__toggle">{{ display_name }}</div>
+				<div class="userMenu__panel">
+					<a class="userMenu__item" href="/dashboard">Dashboard</a>
+					<a class="userMenu__item" href="/account">Account</a>
+					<a class="userMenu__item" href="/register">Add New Parent Login</a>
+					<form method="post" action="/auth/logout">
+						<button class="btnSecondary userMenu__logout" type="submit">Logout</button>
+					</form>
+				</div>
+			</div>
+		</div>
+		
+		<div class="settingsGrid">
+			<section class="card">
+				<h2 class="sectionTitle">Child's Computer</h2>
+				<p class="muted sectionLead">Type in the LAN ip address and port of your childs computer. hint: ip:port</p>
+				
+				<form class="form" method="post" action="/api/settings">
+					<input type="hidden" name="form_type" value="child_ip" />
+					<div class="nameRow">
+						<input
+							class="input"
+							id="child_ip"
+							name="child_ip"
+							type="text"
+							inputmode="text"
+							placeholder="192.168.X.X:port"
+							autocomplete="off"
+							value="{{ child_ip|default('') }}"
+						/>
+						<button class="btnSecondary" type="submit">Save Webhook</button>
+					</div>
+				</form>
+			</section>
+			<section class="card">
+				<h2 class="sectionTitle">Discord Webhook</h2>
+				<p class="muted sectionLead">Paste a Discord webhook URL to receive alerts.</p>
+				
+				<form class="form" method="post" action="/api/settings">
+					<input type="hidden" name="form_type" value="discord_webhook" />
+					<div class="nameRow">
+						<input
+							class="input"
+							id="discord_webhook"
+							name="discord_webhook"
+							type="url"
+							inputmode="url"
+							placeholder="https://discord.com/api/webhooks/..."
+							autocomplete="off"
+							value="{{ discord_webhook|default('') }}"
+						/>
+						<button class="btnSecondary" type="submit">Save Webhook</button>
+					</div>
+				</form>
+			</section>
+		</div>
+	</main>
+</body>
+</html>

@@ -1,5 +1,5 @@
 --
--- File generated with SQLiteStudio v3.4.17 on Thu Mar 5 19:01:50 2026
+-- File generated with SQLiteStudio v3.4.17 on Tue Mar 10 17:37:29 2026
 --
 -- Text encoding used: UTF-8
 --
@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS events (event_id INTEGER PRIMARY KEY ASC AUTOINCREMEN
 
 -- Table: sessions
 CREATE TABLE IF NOT EXISTS sessions (session_id INTEGER PRIMARY KEY ASC AUTOINCREMENT UNIQUE NOT NULL, user_id INTEGER REFERENCES users (user_id) NOT NULL, token TEXT UNIQUE NOT NULL, expires_at TEXT NOT NULL CHECK (datetime(expires_at) IS NOT NULL));
+
+-- Table: settings
+CREATE TABLE IF NOT EXISTS settings (setting_id INTEGER PRIMARY KEY ASC AUTOINCREMENT UNIQUE NOT NULL, discord_webhook TEXT, profile TEXT);
 
 -- Table: users
 CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY ASC AUTOINCREMENT, display_name TEXT NOT NULL, username TEXT NOT NULL UNIQUE, password TEXT NOT NULL);

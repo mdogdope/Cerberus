@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Depends, HTTPException, status, Form
+from fastapi import FastAPI, Request, HTTPException, Form
 from fastapi.responses import RedirectResponse, HTMLResponse
 from datetime import datetime, timedelta, timezone
 from fastapi.staticfiles import StaticFiles
@@ -7,11 +7,11 @@ from random import choice
 from typing import Optional
 from pathlib import Path
 from hashlib import sha256
-from lib.database import create_db, query_db, execute_db, db_exists, wr_tx
+from lib.database import create_db, query_db, execute_db
 import uvicorn, secrets, json
 
 class WebPortal:
-	def __init__(self, host:str = "0.0.0.0", port:int = 80, session_ttl:int = 24, persistant_ttl: int = 720):
+	def __init__(self, host:str = "0.0.0.0", port:int = 80, session_ttl:int = 12, persistant_ttl: int = 720):
 		self.host = host
 		self.port = port
 		self.SESSION_TTL = session_ttl
@@ -25,8 +25,23 @@ class WebPortal:
 	def _setup_routes(self):
 		self.app.mount("/static", StaticFiles(directory=str(self.base_dir / "portal/static")), name="static")
 		templates = Jinja2Templates(directory=str(self.base_dir / "portal/templates"))
+		legal_acceptance_path = self.base_dir / "legal_acceptance.json"
 		
-		def error(request: Request, error_msg:str, title = "Error", subtitle = None, email = "thecerberusproject@proton.me"):
+		def verify_session(request:Request, redirect:bool = True):
+			token = request.cookies.get("session")	
+			if not token:
+				raise HTTPException(status_code=401, detail="Not logged in")
+			
+			user_info = query_db(
+				"SELECT users.* FROM users JOIN sessions ON sessions.user_id = users.user_id WHERE sessions.token = ? AND sessions.expires_at > ?",
+				(token, datetime.now(timezone.utc))
+			)
+			if not user_info:
+				raise HTTPException(status_code=401, detail="Invalid session")
+			
+			return user_info
+		
+		def error(request:Request, error_msg:str, title = "Error", subtitle = None, email = "thecerberusproject@proton.me"):
 			if subtitle == None:
 				subtitles = [
 					"Cerberus just experienced an unexpected runtime vibe check.",
@@ -56,14 +71,17 @@ class WebPortal:
 				},
 			)
 		
-		@self.app.get("/", name="root", response_class=HTMLResponse)
-		async def root(request: Request):
-			if not (self.base_dir / "legal_acceptance.json").exists():
-				with open("legal_acceptance.json", "w") as f:
+		def hash_password(password:str):
+			return sha256(password.encode()).hexdigest()
+		
+		
+		@self.app.get("/", name="root", response_class = HTMLResponse)
+		async def root(request:Request):
+			if not legal_acceptance_path.exists():
+				with open(legal_acceptance_path, "w", encoding="utf-8") as f:
 					json.dump({"DISCLAIMER": False, "EULA": False, "PRIVACY": False}, f)
-					f.close()
 			
-			with open("legal_acceptance.json", "r") as f:
+			with open(legal_acceptance_path, "r", encoding="utf-8") as f:
 				legal_acc:dict = json.load(f)
 				for doc, status in legal_acc.items():
 					if not status:
@@ -71,52 +89,91 @@ class WebPortal:
 			if not (self.base_dir / "cerberus.db").exists():
 				create_db()
 				self.init_setup = True
-				return templates.TemplateResponse("register.html", {"request": request}, status_code=303)
-			return templates.TemplateResponse("login.html", {"request": request}, status_code=303)
+				return templates.TemplateResponse("register.html", {"request": request}, status_code=200)
+			
+			try:
+				verify_session(request)
+				return RedirectResponse("/dashboard", status_code=303)
+			except HTTPException:
+				return RedirectResponse("/login", status_code=303)
+			
 		
-		@self.app.get("/login", response_class=HTMLResponse)
-		async def login(request: Request, error: Optional[str] = None):
-			return templates.TemplateResponse("login.html", {"request": request, "error": error}, status_code=303)
+		@self.app.get("/login", response_class = HTMLResponse)
+		async def login(request:Request, error:Optional[str] = None):
+			return templates.TemplateResponse("login.html", {"request": request, "error": error}, status_code=200)
 		
-		@self.app.get("/dashboard", response_class=HTMLResponse)
-		async def dashboard(request: Request):
-			return templates.TemplateResponse("dashboard.html", {"request": request}, status_code=303)
+		@self.app.get("/dashboard", response_class = HTMLResponse)
+		async def dashboard(request:Request):
+			user_info = verify_session(request)
+			display_name = user_info[0]["display_name"]
+			return templates.TemplateResponse("dashboard.html", {"request": request, "display_name": display_name}, status_code=200)
 		
-		@self.app.get("/register", response_class=HTMLResponse)
-		async def register(request: Request):
-			return templates.TemplateResponse("register.html", {"request": request}, status_code=303)
+		@self.app.get("/register", response_class = HTMLResponse)
+		async def register(request:Request):
+			if not self.init_setup:
+				verify_session(request)
+			return templates.TemplateResponse("register.html", {"request": request}, status_code=200)
+		
+		@self.app.get("/account", response_class = HTMLResponse)
+		async def account(request:Request, error:Optional[str] = None):
+			user_info = verify_session(request)
+			display_name = user_info[0]["display_name"]
+			return templates.TemplateResponse("account.html", {"request": request, "display_name": display_name, "error": error}, status_code=200)
+
+		@self.app.get("/settings", response_class = HTMLResponse)
+		async def settings(request:Request):
+			user_info = verify_session(request)
+			display_name = user_info[0]["display_name"]
+			child_row = query_db("SELECT device_ip FROM devices WHERE device_name = ? LIMIT 1", ("child_pc",))
+			child_ip = child_row[0]["device_ip"] if child_row else ""
+			discord_row = query_db("SELECT discord_webhook FROM settings WHERE profile = ? LIMIT 1", ("discord_webhook",))
+			discord_webhook = discord_row[0]["discord_webhook"] if discord_row else ""
+			return templates.TemplateResponse("settings.html", {"request": request, "display_name": display_name, "child_ip": child_ip, "discord_webhook": discord_webhook}, status_code=200)
 		
 		@self.app.exception_handler(401)
-		async def auth_err_handler(request: Request, exc: HTTPException):
+		async def auth_err_handler(request:Request, exc:HTTPException):
 			return templates.TemplateResponse("auth_error.html", {"request": request, "message": exc.detail}, status_code=401)
 		
-		@self.app.post("/legal_doc", response_class=RedirectResponse)
-		async def legal_doc(request: Request, doc_path:str = Form(...), title:str = Form(...), agree: bool = Form(False)):
-			with open("legal_acceptance.json", "r") as f:
+		@self.app.post("/legal_doc", response_class = RedirectResponse)
+		async def legal_doc(request:Request, doc_path:str = Form(...), title:str = Form(...), agree:bool = Form(False)):
+			with open(legal_acceptance_path, "r", encoding="utf-8") as f:
 				legal_acc = json.load(f)
-			if agree:
+			if agree and title in legal_acc:
 				legal_acc[title] = True
-				with open("legal_acceptance.json", "w") as f:
+				with open(legal_acceptance_path, "w", encoding="utf-8") as f:
 					json.dump(legal_acc, f)
 			return RedirectResponse("/", status_code=303)
 		
 		@self.app.post("/auth/login")
-		async def auth_login(request: Request, username:str = Form(...), password:str = Form(...), remember_me: bool = Form(False)):
-			# response = RedirectResponse("/dashboard", status_code=303)
-			# return response
+		async def auth_login(request:Request, username:str = Form(...), password:str = Form(...), remember_me:bool = Form(False)):
 			if remember_me:
 				ttl = self.PERSISTANT_TTL
 			else:
 				ttl = self.SESSION_TTL
-			password = sha256(password.encode()).hexdigest()
-			user_info = query_db("SELECT * FROM users WHERE username = ? AND password = ?", (username, password))
-			if not user_info:
-				return RedirectResponse("/login?err=1", status_code=401)
+			password = hash_password(password)
+			user_info = query_db("""
+				SELECT * FROM users
+				WHERE username = ? AND password = ?
+				""",
+				(username, password)
+			)
+			if user_info == []:
+				return RedirectResponse("/login?error=1", status_code=303)
+			
+			execute_db(
+				"DELETE FROM sessions WHERE user_id = ? AND expires_at <= ?",
+				(user_info[0]["user_id"], datetime.now(timezone.utc))
+			)
 			
 			token = secrets.token_urlsafe(32)
 			expires_at = datetime.now(timezone.utc) + timedelta(hours=ttl)
 			
-			execute_db("INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)", (user_info[0]["user_id"], token, expires_at))
+			execute_db("""
+				INSERT INTO sessions (user_id, token, expires_at)
+				VALUES (?, ?, ?)
+				""",
+				(user_info[0]["user_id"], token, expires_at)
+			)
 			
 			response = RedirectResponse("/dashboard", status_code=303)
 			response.set_cookie(
@@ -125,46 +182,117 @@ class WebPortal:
 				httponly=True,
 				samesite="lax",
 				secure=False,
-				max_age=ttl
+				max_age=ttl*60*60
 			)
 			
 			return response
 		
-		@self.app.post("/auth/register", response_class=RedirectResponse)
-		async def auth_register(request: Request, username:str = Form(...), display_name:str = Form(...), password:str = Form(...)):
+		@self.app.post("/auth/register", response_class = RedirectResponse)
+		async def auth_register(request:Request, username:str = Form(...), display_name:str = Form(...), password:str = Form(...)):
 			if not self.init_setup:
-				token = request.cookies.get("session")
-				
-				if not token:
-					raise HTTPException(status_code=401, detail="Not logged in")
-				
-				user_info = query_db("SELECT users.* FROM users JOIN sessions ON sessions.user_id = users.user_id WHERE sessions.token = ?", (token,))
-				
-				if not user_info:
-					raise HTTPException(status_code=401, detail="Invalid session")
+				verify_session(request)
 			
-			password = sha256(password.encode()).hexdigest()
+			password = hash_password(password)
 			try:
-				execute_db("INSERT INTO users (username, display_name, password) VALUES (?, ?, ?)", (username, display_name, password))
+				execute_db("""
+					INSERT INTO users (username, display_name, password)
+					VALUES (?, ?, ?)
+					""",
+					(username, display_name, password)
+				)
 				self.init_setup = False
 				return RedirectResponse("/", status_code=303)
 			except Exception as e:
 				return error(request, str(e))
 		
 		@self.app.post("/auth/logout")
-		async def logout(request: Request):
+		async def logout(request:Request):
 			token = request.cookies.get("session")
 			
 			if token:
-				# TODO: Make SQL query to remove token
-				pass
+				execute_db("DELETE FROM sessions WHERE token = ?", (token,))
 			
 			response = RedirectResponse("/login", status_code=303)
 			response.delete_cookie("session")
 			return response
 		
-		@self.app.get("/test", response_class=HTMLResponse)
-		async def test(request: Request):
+		@self.app.post("/api/events")
+		async def api_events(request:Request, page:int, count:int):
+			page = max(page, 1)
+			count = max(min(count,1000),1)
+			offset = (page - 1) * count
+			
+			total_count = query_db("""
+				SELECT COUNT(*) AS total_count
+				FROM events
+				""",
+				()
+			)[0]["total_count"]
+			events = query_db("""
+				SELECT
+					e.event_id,
+					e.device,
+					e.report,
+					e.full_image_path,
+					e.cell_image_path,
+					e.sound_path, e.event_type,
+					d.device_name,
+					t.event_type_name
+				FROM events e
+				LEFT JOIN devices d ON e.device = d.device_id
+				LEFT JOIN event_types t ON e.event_type = t.event_type_id
+				ORDER BY e.event_id DESC
+				LIMIT ? OFFSET ?
+				""",
+				(count, offset)
+			)
+			return {"page": page, "count": count, "total_count": total_count, "events": events}
+		
+		@self.app.post("/api/account")
+		async def api_account(request:Request):
+			user_info = verify_session(request)
+			user_id = user_info[0]["user_id"]
+			old_password_hash = user_info[0]["password"]
+			form = dict(await request.form())
+			form_type = form.get("form_type")
+			
+			if form_type == "display_name":
+				display_name = str(form.get("display_name", "")).strip()
+				if display_name:
+					execute_db("UPDATE users SET display_name = ? WHERE user_id = ?", (display_name, user_id))
+				return RedirectResponse("/account", status_code=303)
+			elif form_type == "password":
+				old_password = hash_password(str(form.get("old_password", "")))
+				new_password = str(form.get("new_password", ""))
+				confirm_new_password = str(form.get("confirm_new_password", ""))
+				if old_password != old_password_hash:
+					return RedirectResponse("/account?error=1", status_code=303)
+				if not new_password or new_password != confirm_new_password:
+					return RedirectResponse("/account?error=1", status_code=303)
+				execute_db("UPDATE users SET password = ? WHERE user_id = ?", (hash_password(new_password), user_id))
+				return RedirectResponse("/account", status_code=303)
+			
+			return RedirectResponse("/account", status_code=303)
+		
+		@self.app.post("/api/settings")
+		async def api_settings(request:Request):
+			form = dict(await request.form())
+			form_type = form.get("form_type")
+			if form_type == "child_ip":
+				child_ip = str(form.get("child_ip", "")).strip()
+				if child_ip:
+					execute_db("DELETE FROM devices WHERE device_name = ?", ("child_pc",))
+					execute_db("INSERT INTO devices (device_name, device_ip) VALUES (?, ?)", ("child_pc", child_ip))
+			elif form_type == "discord_webhook":
+				discord_webhook = str(form.get("discord_webhook", "")).strip()
+				if discord_webhook:
+					execute_db("DELETE FROM settings WHERE profile = ?", ("discord_webhook",))
+					execute_db("INSERT INTO settings (profile, discord_webhook) VALUES (?, ?)", ("discord_webhook", discord_webhook))
+			return RedirectResponse("/settings", status_code=303)
+			
+		
+		@self.app.get("/test")
+		async def test(request:Request):
 			e = ""
 			for i in range(50):
 				e += secrets.token_urlsafe(64) + "\n"

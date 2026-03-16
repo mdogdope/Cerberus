@@ -5,6 +5,16 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link rel="icon" href="/static/res/CerberusSmall.png">
 	<link rel="stylesheet" href="/static/style.css" />
+	<style>
+		#refreshEventsBtn{
+			transition: transform 0.15s ease, opacity 0.15s ease;
+		}
+		#refreshEventsBtn:hover,
+		#refreshEventsBtn:focus-visible{
+			opacity: 0.8;
+			transform: rotate(20deg) scale(1.08);
+		}
+	</style>
 	<title>Cerberus | Dashboard</title>
 </head>
 
@@ -12,49 +22,74 @@
 	<main class="shell shell--top">
 
 		<div class="topbar">
-			<div class="brandMini brandMini--flush">
+			<a class="brandMini brandMini--flush" href="/">
 				<img src="/static/res/Cerberus.png" alt="Cerberus logo" class="brandMini__logo" />
 				<div>
 					<h1 class="brandMini__title">Cerberus Portal</h1>
 					<p class="brandMini__subtitle">Dashboard</p>
 				</div>
-			</div>
+			</a>
 
-			<form method="post" action="/auth/logout">
-				<button class="btnSecondary" type="submit">Logout</button>
-			</form>
+			<div class="userMenu" aria-label="User menu">
+				<div class="userMenu__toggle">{{ display_name }}</div>
+				<div class="userMenu__panel">
+					<a class="userMenu__item" href="/account">Account</a>
+					<a class="userMenu__item" href="/settings">Settings</a>
+					<a class="userMenu__item" href="/register">Add New Parent Login</a>
+					<form method="post" action="/auth/logout">
+						<button class="btnSecondary userMenu__logout" type="submit">Logout</button>
+					</form>
+				</div>
+			</div>
 		</div>
 
 		<div class="stats">
-			<div class="card">
-				<p class="mutedSmall">New events (7 days)</p>
-				<p id="statNew7" class="statValue">0</p>
-			</div>
+			<a class="card card--action" href="/backlog" aria-label="Open processing backlog details">
+				<h2 class="mutedSmall">Processing Backlog</h2>
+				<p class="statValue">{{ backlog_count if backlog_count is defined else 0 }}</p>
+				<p class="mutedSmall">images waiting</p>
+			</a>
 
-			<div class="card">
-				<p class="mutedSmall">High severity (7 days)</p>
-				<p id="statHigh7" class="statValue">0</p>
-			</div>
+			<a class="card card--action" href="/processing-metrics" aria-label="Open average speed details">
+				<h2 class="mutedSmall">Avg Speed</h2>
+				<p class="statValue">{{ avg_speed_sec_img if avg_speed_sec_img is defined else "0.0" }} sec/img</p>
+				<p class="mutedSmall">average processing time</p>
+			</a>
 
-			<div class="card">
-				<p class="mutedSmall">Devices active (24h)</p>
-				<p id="statDevices24" class="statValue">0</p>
-			</div>
+			<a class="card card--action" href="/review" aria-label="Open needs review queue">
+				<h2 class="mutedSmall">Needs Review</h2>
+				<p class="statValue">{{ needs_review_count if needs_review_count is defined else 0 }}</p>
+				<p class="mutedSmall">below threshold</p>
+			</a>
 		</div>
 
 		<div class="card">
-			<h2 class="sectionTitle">Recent Events</h2>
+			<h2 class="sectionTitle" style="display:flex;align-items:center;gap:0.5rem;">
+				<span>Recent Events</span>
+				<button
+					id="refreshEventsBtn"
+					type="button"
+					aria-label="Refresh recent events"
+					title="Refresh recent events"
+					style="border:none;background:none;padding:0;cursor:pointer;display:inline-flex;align-items:center;color:inherit;font-size:1em;line-height:1;"
+				>
+					&#x21bb;
+				</button>
+			</h2>
 			<p class="mutedSmall">Newest at top</p>
 
 			<div id="eventsContainer">
 				Loading...
 			</div>
+			<div id="eventsPagination" style="margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.4rem;"></div>
 		</div>
 
 	</main>
 
 	<script>
-		var demo_mode = true;
+		var demo_mode = false;
+		var EVENTS_PER_PAGE = 7;
+		var currentPage = 1;
 
 		function getDemoEvents(){
 			const now = Date.now();
@@ -65,38 +100,43 @@
 				{ id:"EVT-1001", timestamp:h(2), severity:"high", device:"Kid-PC", type:"image", title:"NSFW image detected" },
 				{ id:"EVT-1002", timestamp:h(5), severity:"med", device:"Kid-Phone", type:"text", title:"Sensitive phrase detected" },
 				{ id:"EVT-1003", timestamp:d(1), severity:"low", device:"Kid-Tablet", type:"system", title:"Device connected" },
-				{ id:"EVT-1004", timestamp:d(3), severity:"high", device:"Kid-Phone", type:"text", title:"Threat keyword detected" }
+				{ id:"EVT-1004", timestamp:d(3), severity:"high", device:"Kid-Phone", type:"text", title:"Threat keyword detected" },
+				{ id:"EVT-1005", timestamp:d(4), severity:"med", device:"Kid-PC", type:"image", title:"Image flagged" },
+				{ id:"EVT-1006", timestamp:d(5), severity:"low", device:"Kid-Tablet", type:"system", title:"Device connected" },
+				{ id:"EVT-1007", timestamp:d(6), severity:"high", device:"Kid-Phone", type:"text", title:"Threat keyword detected" },
+				{ id:"EVT-1008", timestamp:d(7), severity:"med", device:"Kid-PC", type:"image", title:"Image flagged" },
+				{ id:"EVT-1009", timestamp:d(8), severity:"low", device:"Kid-Tablet", type:"system", title:"Device connected" },
+				{ id:"EVT-1010", timestamp:d(9), severity:"high", device:"Kid-Phone", type:"text", title:"Threat keyword detected" }
 			];
 		}
 
-		async function fetchEvents(){
-			if(demo_mode) return getDemoEvents();
+		async function fetchEvents(page){
+			if(demo_mode){
+				const events = getDemoEvents().sort((a,b)=>b.timestamp-a.timestamp);
+				const total_count = events.length;
+				const start = (page - 1) * EVENTS_PER_PAGE;
+				const paged = events.slice(start, start + EVENTS_PER_PAGE);
+				return { page, count: EVENTS_PER_PAGE, total_count, events: paged };
+			}
 
-			const res = await fetch("/api/events?days=30", {credentials:"include"});
+			const url = `/api/events?page=${page}&count=${EVENTS_PER_PAGE}`;
+			const res = await fetch(url, {method:"POST", credentials:"include"});
+			if(!res.ok) throw new Error("Failed to load events");
 			return await res.json();
 		}
 
-		function withinDays(ts, days){
-			return ts >= Date.now() - days*86400000;
+		function extractTimestamp(event){
+			if(event.timestamp) return event.timestamp;
+			if(event.report && typeof event.report === "string"){
+				try{
+					const parsed = JSON.parse(event.report);
+					if(parsed && parsed.timestamp) return parsed.timestamp;
+				}catch(err){}
+			}
+			return null;
 		}
 
-		function withinHours(ts, hours){
-			return ts >= Date.now() - hours*3600000;
-		}
-
-		function render(events){
-			events.sort((a,b)=>b.timestamp-a.timestamp);
-
-			const last7 = events.filter(e=>withinDays(e.timestamp,7));
-			const high7 = last7.filter(e=>e.severity==="high");
-			const last24 = events.filter(e=>withinHours(e.timestamp,24));
-
-			document.getElementById("statNew7").textContent = last7.length;
-			document.getElementById("statHigh7").textContent = high7.length;
-
-			const devices = new Set(last24.map(e=>e.device));
-			document.getElementById("statDevices24").textContent = devices.size;
-
+		function renderEvents(events){
 			if(events.length===0){
 				document.getElementById("eventsContainer").innerHTML="No events.";
 				return;
@@ -116,12 +156,13 @@
 			`;
 
 			for(const e of events){
-				const date = new Date(e.timestamp).toLocaleString();
+				const timestamp = extractTimestamp(e);
+				const date = timestamp ? new Date(timestamp).toLocaleString() : "Unknown";
 				html += `
 					<tr>
-						<td>${e.title}</td>
-						<td>${e.device}</td>
-						<td><span class="badge ${e.severity}">${e.severity.toUpperCase()}</span></td>
+						<td>${e.title || e.report || "Event"}</td>
+						<td>${e.device || e.device_name || "Unknown"}</td>
+						<td><span class="badge ${e.severity || "low"}">${(e.severity || "low").toUpperCase()}</span></td>
 						<td>${date}</td>
 					</tr>
 				`;
@@ -131,7 +172,55 @@
 			document.getElementById("eventsContainer").innerHTML = html;
 		}
 
-		fetchEvents().then(render);
+		function renderPagination(totalCount){
+			const totalPages = Math.max(1, Math.ceil(totalCount / EVENTS_PER_PAGE));
+			if(currentPage > totalPages) currentPage = totalPages;
+
+			const container = document.getElementById("eventsPagination");
+			if(totalPages <= 1){
+				container.innerHTML = "";
+				return;
+			}
+
+			let html = "";
+			const prevDisabled = currentPage === 1 ? "disabled" : "";
+			const nextDisabled = currentPage === totalPages ? "disabled" : "";
+			html += `<button class="btnSecondary" type="button" data-page="${currentPage-1}" ${prevDisabled}>Prev</button>`;
+			for(let i=1;i<=totalPages;i++){
+				const active = i === currentPage ? "btnPrimary" : "btnSecondary";
+				html += `<button class="${active}" type="button" data-page="${i}">${i}</button>`;
+			}
+			html += `<button class="btnSecondary" type="button" data-page="${currentPage+1}" ${nextDisabled}>Next</button>`;
+			container.innerHTML = html;
+
+			container.querySelectorAll("button[data-page]").forEach(btn=>{
+				btn.addEventListener("click", ()=>{
+					const page = Number(btn.getAttribute("data-page"));
+					if(!Number.isNaN(page)){
+						currentPage = Math.min(Math.max(page,1), totalPages);
+						refreshEvents();
+					}
+				});
+			});
+		}
+
+		async function refreshEvents(){
+			const container = document.getElementById("eventsContainer");
+			container.innerHTML = "Loading...";
+			try{
+				const payload = await fetchEvents(currentPage);
+				renderEvents(payload.events || []);
+				renderPagination(payload.total_count || 0);
+			}catch(err){
+				container.innerHTML = "Unable to load events.";
+			}
+		}
+
+		document.getElementById("refreshEventsBtn").addEventListener("click", function(){
+			currentPage = 1;
+			refreshEvents();
+		});
+		refreshEvents();
 	</script>
 
 </body>

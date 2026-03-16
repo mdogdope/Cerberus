@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="icon" href="/static/res/CerberusSmall.png">
+	<link rel="stylesheet" href="/static/style.css" />
+	<title>Cerberus | Account</title>
+	<style>
+		.input.error {
+			border: 1px solid #E5484D;
+			box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.18);
+		}
+		
+		.accountGrid {
+			display: grid;
+			grid-template-columns: 1fr;
+			gap: 16px;
+		}
+		
+		.nameRow {
+			display: flex;
+			gap: 10px;
+			align-items: center;
+		}
+		
+		.nameRow .input {
+			flex: 1;
+		}
+		
+		.nameRow .btnSecondary {
+			margin: 0;
+			white-space: nowrap;
+			padding: 12px 18px;
+		}
+		
+		.sectionLead {
+			margin-top: 6px;
+			margin-bottom: 14px;
+		}
+		
+		@media (max-width: 640px) {
+			.nameRow {
+				flex-direction: column;
+				align-items: stretch;
+			}
+			
+			.nameRow .btnSecondary {
+				width: 100%;
+			}
+		}
+		
+		.input.error {
+			border: 1px solid #E5484D;
+			box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.18);
+		}
+	</style>
+</head>
+<body>
+	<main class="shell shell--top">
+		<div class="topbar">
+			<a class="brandMini brandMini--flush" href="/">
+				<img src="/static/res/Cerberus.png" alt="Cerberus logo" class="brandMini__logo" />
+				<div>
+					<h1 class="brandMini__title">Cerberus Portal</h1>
+					<p class="brandMini__subtitle">Account</p>
+				</div>
+			</a>
+			
+			<div class="userMenu" aria-label="User menu">
+				<div class="userMenu__toggle">{{ display_name }}</div>
+				<div class="userMenu__panel">
+					<a class="userMenu__item" href="/dashboard">Dashboard</a>
+					<a class="userMenu__item" href="/settings">Settings</a>
+					<a class="userMenu__item" href="/register">Add New Parent Login</a>
+					<form method="post" action="/auth/logout">
+						<button class="btnSecondary userMenu__logout" type="submit">Logout</button>
+					</form>
+				</div>
+			</div>
+		</div>
+		
+		<div class="accountGrid">
+			<section class="card">
+				<h2 class="sectionTitle">Display Name</h2>
+				<p class="muted sectionLead">Update the name shown in the portal.</p>
+				
+				<form class="form" method="post" action="/api/account">
+					<input type="hidden" name="form_type" value="display_name" />
+					<div class="nameRow">
+						<input
+							class="input"
+							id="display_name"
+							name="display_name"
+							type="text"
+							autocomplete="name"
+							value="{{ display_name }}"
+							required
+						/>
+						<button class="btnSecondary" type="submit">Save</button>
+					</div>
+				</form>
+			</section>
+			
+			<section class="card">
+				<h2 class="sectionTitle">Password</h2>
+				<p class="muted sectionLead">Use your current password, then enter a new one twice.</p>
+				
+				<form class="form" method="post" action="/api/account" autocomplete="off" id="passwordForm">
+					<input type="hidden" name="form_type" value="password" />
+					
+					<div class="field">
+						<label class="label" for="old_password">Current Password</label>
+						<input class="input {% if error %}error{% endif %}" id="old_password" name="old_password" type="password" autocomplete="current-password" required />
+						{% if error %}{% endif %}
+					</div>
+					
+					<div class="field">
+						<label class="label" for="new_password">New Password</label>
+						<input class="input" id="new_password" name="new_password" type="password" autocomplete="new-password" required />
+					</div>
+					
+					<div class="field">
+						<label class="label" for="confirm_new_password">Confirm New Password</label>
+						<input class="input" id="confirm_new_password" name="confirm_new_password" type="password" autocomplete="new-password" required />
+					</div>
+					
+					<button class="btn" type="submit">Save Password</button>
+					
+					{% if error %}
+						<p class="error">Incorrect current password.</p>
+					{% endif %}
+				</form>
+			</section>
+		</div>
+	</main>
+	
+	<script>
+		const newPassword = document.getElementById("new_password");
+		const confirmNewPassword = document.getElementById("confirm_new_password");
+		const passwordForm = document.getElementById("passwordForm");
+		
+		let debounceTimer = null;
+		const DELAY = 400;
+		
+		function applyError() {
+			confirmNewPassword.classList.add("error");
+		}
+		
+		function removeError() {
+			confirmNewPassword.classList.remove("error");
+		}
+		
+		function handleInput() {
+			const p = newPassword.value;
+			const c = confirmNewPassword.value;
+			
+			if (p === c && c.length > 0) {
+				clearTimeout(debounceTimer);
+				removeError();
+				return;
+			}
+			
+			clearTimeout(debounceTimer);
+			debounceTimer = setTimeout(() => {
+				if (newPassword.value !== confirmNewPassword.value && confirmNewPassword.value.length > 0) {
+					applyError();
+				}
+			}, DELAY);
+		}
+		
+		newPassword.addEventListener("input", handleInput);
+		confirmNewPassword.addEventListener("input", handleInput);
+		
+		passwordForm.addEventListener("submit", (e) => {
+			clearTimeout(debounceTimer);
+			if (newPassword.value !== confirmNewPassword.value) {
+				applyError();
+				e.preventDefault();
+			}
+		});
+	</script>
+</body>
+</html>
