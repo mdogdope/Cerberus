@@ -323,6 +323,22 @@ body{
 	color: #ffb4b4;
 }
 
+.confirmMessage{
+	margin: 0;
+	font-size: 13px;
+	color: var(--brand);
+	opacity: 0;
+	max-height: 0;
+	overflow: hidden;
+	transition: opacity 160ms ease, max-height 160ms ease, margin-top 160ms ease;
+}
+
+.confirmMessage.is-visible{
+	opacity: 1;
+	max-height: 32px;
+	margin-top: 6px;
+}
+
 /* Primary call-to-action button for main form submits. */
 .btn{
 	margin-top: 6px;
@@ -359,6 +375,13 @@ body{
 	filter: brightness(0.98);
 }
 
+.btn:disabled{
+	opacity: 0.55;
+	cursor: not-allowed;
+	filter: grayscale(0.2);
+	box-shadow: none;
+}
+
 /* Keyboard focus state for the primary action button. */
 .btn:focus-visible{
 	outline: none;
@@ -383,6 +406,15 @@ body{
 /* Hover state for the secondary button. */
 .btnSecondary:hover{
 	background: rgba(255,255,255,0.12);
+}
+
+.btnSecondary.is-active{
+	background: linear-gradient(135deg, rgba(72, 104, 248, 0.95), rgba(106, 124, 255, 0.95));
+	border-color: rgba(255,255,255,0.35);
+	color: #ffffff;
+	box-shadow:
+		0 10px 24px rgba(72, 104, 248, 0.35),
+		inset 0 1px 0 rgba(255, 255, 255, 0.28);
 }
 
 /* Pressed state for the secondary button. */
@@ -518,6 +550,47 @@ body{
 	margin-bottom: 20px;
 }
 
+/* Single-device status card for dashboard. */
+.deviceStatus{
+	display: flex;
+	align-items: flex-start;
+	justify-content: flex-start;
+	min-height: 120px;
+}
+
+.deviceStatus__head{
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+}
+
+.deviceStatus__dot{
+	width: 12px;
+	height: 12px;
+	border-radius: 999px;
+	margin-top: 4px;
+	box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+.deviceStatus__dot--online{
+	background: #4ade80;
+}
+
+.deviceStatus__dot--offline{
+	background: #7b8398;
+}
+
+.deviceStatus__name{
+	margin: 0;
+	font-size: 18px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+}
+
+.deviceStatus__ip{
+	margin-top: 6px;
+}
+
 /* Large numeric value used inside stat cards. */
 .statValue{
 	margin: 0;
@@ -544,6 +617,26 @@ body{
 	font-size: 12px;
 	color: var(--muted);
 	text-transform: uppercase;
+}
+
+/* Clickable event rows. */
+.eventRow{
+	cursor: pointer;
+	transition: background 140ms ease, transform 140ms ease;
+}
+
+.eventRow:hover,
+.eventRow:focus-visible{
+	background: rgba(255, 255, 255, 0.08);
+}
+
+.eventRow:active{
+	background: rgba(255, 255, 255, 0.05);
+}
+
+.eventRow:focus-visible{
+	outline: 2px solid rgba(72, 104, 248, 0.65);
+	outline-offset: -2px;
 }
 
 /* Pill-style label for statuses, severities, and compact metadata. */
@@ -613,6 +706,102 @@ a:focus-visible{
 
 .lg-font {
 	font-size: 18px;
+}
+
+/* Modal overlay for event detail viewing. */
+body.modal-open{
+	overflow: hidden;
+}
+
+.modal{
+	position: fixed;
+	inset: 0;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 50;
+}
+
+.modal--hidden{
+	display: none;
+}
+
+.modal__backdrop{
+	position: absolute;
+	inset: 0;
+	background: rgba(6, 10, 20, 0.62);
+	backdrop-filter: blur(10px);
+	-webkit-backdrop-filter: blur(10px);
+}
+
+.modal__panel{
+	position: relative;
+	width: 90vw;
+	height: 90vh;
+	background: var(--card);
+	border: 1px solid var(--stroke);
+	border-radius: calc(var(--radius) + 10px);
+	box-shadow: var(--shadow);
+	padding: 24px;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+	backdrop-filter: blur(14px);
+	-webkit-backdrop-filter: blur(14px);
+}
+
+.modal__header{
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+}
+
+.modal__content{
+	flex: 1;
+	overflow: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.eventMeta{
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+	gap: 12px;
+}
+
+.eventMedia{
+	flex: 1;
+	min-height: 0;
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	border-radius: 16px;
+	border: 1px dashed rgba(255, 255, 255, 0.16);
+	padding: 16px;
+	background: rgba(255, 255, 255, 0.05);
+}
+
+.eventMedia__item{
+	max-width: 100%;
+	max-height: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.eventMedia img{
+	max-width: 100%;
+	max-height: 100%;
+	border-radius: 12px;
+	box-shadow: var(--shadow);
+}
+
+.eventMedia audio{
+	width: min(520px, 100%);
 }
 
 @media (max-width: 900px){

@@ -75,7 +75,7 @@
 				<h2 class="sectionTitle">Child's Computer</h2>
 				<p class="muted sectionLead">Type in the LAN ip address and port of your childs computer. hint: ip:port</p>
 				
-				<form class="form" method="post" action="/api/settings">
+				<form class="form" method="post" action="/api/settings" data-form-type="child_ip" data-confirm-message="Child computer saved">
 					<input type="hidden" name="form_type" value="child_ip" />
 					<div class="nameRow">
 						<input
@@ -88,15 +88,16 @@
 							autocomplete="off"
 							value="{{ child_ip|default('') }}"
 						/>
-						<button class="btnSecondary" type="submit">Save Webhook</button>
+						<button class="btnSecondary" type="submit" disabled>Save</button>
 					</div>
+					<p class="confirmMessage" role="status" aria-live="polite"></p>
 				</form>
 			</section>
 			<section class="card">
 				<h2 class="sectionTitle">Discord Webhook</h2>
 				<p class="muted sectionLead">Paste a Discord webhook URL to receive alerts.</p>
 				
-				<form class="form" method="post" action="/api/settings">
+				<form class="form" method="post" action="/api/settings" data-form-type="discord_webhook" data-confirm-message="Discord webhook saved">
 					<input type="hidden" name="form_type" value="discord_webhook" />
 					<div class="nameRow">
 						<input
@@ -109,11 +110,68 @@
 							autocomplete="off"
 							value="{{ discord_webhook|default('') }}"
 						/>
-						<button class="btnSecondary" type="submit">Save Webhook</button>
+						<button class="btnSecondary" type="submit" disabled>Save</button>
 					</div>
+					<p class="confirmMessage" role="status" aria-live="polite"></p>
 				</form>
 			</section>
 		</div>
 	</main>
+	
+	<script>
+		(() => {
+			const SAVED_FORM_KEY = "cerberus-saved-form";
+			const SHOW_DURATION = 3200;
+
+			function showConfirm(form) {
+				const confirmEl = form.querySelector(".confirmMessage");
+				if (!confirmEl) {
+					return;
+				}
+				confirmEl.textContent = form.dataset.confirmMessage || "Saved";
+				confirmEl.classList.add("is-visible");
+				setTimeout(() => {
+					confirmEl.classList.remove("is-visible");
+				}, SHOW_DURATION);
+			}
+
+			function wireForm(form) {
+				const input = form.querySelector(".input");
+				const button = form.querySelector("button[type='submit']");
+				if (!input || !button) {
+					return;
+				}
+
+				const initialValue = input.value;
+
+				const updateButton = () => {
+					const changed = input.value !== initialValue;
+					button.disabled = !changed;
+					button.classList.toggle("is-active", changed);
+				};
+
+				updateButton();
+				input.addEventListener("input", updateButton);
+
+				form.addEventListener("submit", () => {
+					button.disabled = true;
+					button.classList.remove("is-active");
+					const formType = form.dataset.formType;
+					if (formType) {
+						sessionStorage.setItem(SAVED_FORM_KEY, formType);
+					}
+				});
+
+				if (form.dataset.formType && sessionStorage.getItem(SAVED_FORM_KEY) === form.dataset.formType) {
+					sessionStorage.removeItem(SAVED_FORM_KEY);
+					showConfirm(form);
+				}
+			}
+
+			document.querySelectorAll("form.form[data-form-type]").forEach((form) => {
+				wireForm(form);
+			});
+		})();
+	</script>
 </body>
 </html>

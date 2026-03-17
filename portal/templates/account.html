@@ -54,6 +54,7 @@
 			border: 1px solid #E5484D;
 			box-shadow: 0 0 0 3px rgba(229, 72, 77, 0.18);
 		}
+		
 	</style>
 </head>
 <body>
@@ -85,7 +86,7 @@
 				<h2 class="sectionTitle">Display Name</h2>
 				<p class="muted sectionLead">Update the name shown in the portal.</p>
 				
-				<form class="form" method="post" action="/api/account">
+				<form class="form" method="post" action="/api/account" data-form-type="display_name" data-confirm-message="Display name saved">
 					<input type="hidden" name="form_type" value="display_name" />
 					<div class="nameRow">
 						<input
@@ -97,8 +98,9 @@
 							value="{{ display_name }}"
 							required
 						/>
-						<button class="btnSecondary" type="submit">Save</button>
+						<button class="btnSecondary" type="submit" disabled>Save</button>
 					</div>
+					<p class="confirmMessage" role="status" aria-live="polite"></p>
 				</form>
 			</section>
 			
@@ -106,7 +108,7 @@
 				<h2 class="sectionTitle">Password</h2>
 				<p class="muted sectionLead">Use your current password, then enter a new one twice.</p>
 				
-				<form class="form" method="post" action="/api/account" autocomplete="off" id="passwordForm">
+				<form class="form" method="post" action="/api/account" autocomplete="off" id="passwordForm" data-form-type="password" data-confirm-message="Password saved">
 					<input type="hidden" name="form_type" value="password" />
 					
 					<div class="field">
@@ -125,7 +127,8 @@
 						<input class="input" id="confirm_new_password" name="confirm_new_password" type="password" autocomplete="new-password" required />
 					</div>
 					
-					<button class="btn" type="submit">Save Password</button>
+					<button class="btn" type="submit" disabled>Save Password</button>
+					<p class="confirmMessage" role="status" aria-live="polite"></p>
 					
 					{% if error %}
 						<p class="error">Incorrect current password.</p>
@@ -136,49 +139,134 @@
 	</main>
 	
 	<script>
-		const newPassword = document.getElementById("new_password");
-		const confirmNewPassword = document.getElementById("confirm_new_password");
-		const passwordForm = document.getElementById("passwordForm");
-		
-		let debounceTimer = null;
-		const DELAY = 400;
-		
-		function applyError() {
-			confirmNewPassword.classList.add("error");
-		}
-		
-		function removeError() {
-			confirmNewPassword.classList.remove("error");
-		}
-		
-		function handleInput() {
-			const p = newPassword.value;
-			const c = confirmNewPassword.value;
-			
-			if (p === c && c.length > 0) {
-				clearTimeout(debounceTimer);
-				removeError();
-				return;
-			}
-			
-			clearTimeout(debounceTimer);
-			debounceTimer = setTimeout(() => {
-				if (newPassword.value !== confirmNewPassword.value && confirmNewPassword.value.length > 0) {
-					applyError();
+		(() => {
+			const SAVED_FORM_KEY = "cerberus-saved-form";
+			const SHOW_DURATION = 3200;
+
+			function showConfirm(form) {
+				const confirmEl = form.querySelector(".confirmMessage");
+				if (!confirmEl) {
+					return;
 				}
-			}, DELAY);
-		}
-		
-		newPassword.addEventListener("input", handleInput);
-		confirmNewPassword.addEventListener("input", handleInput);
-		
-		passwordForm.addEventListener("submit", (e) => {
-			clearTimeout(debounceTimer);
-			if (newPassword.value !== confirmNewPassword.value) {
-				applyError();
-				e.preventDefault();
+				confirmEl.textContent = form.dataset.confirmMessage || "Saved";
+				confirmEl.classList.add("is-visible");
+				setTimeout(() => {
+					confirmEl.classList.remove("is-visible");
+				}, SHOW_DURATION);
 			}
-		});
+
+			function registerForm(form, shouldEnable) {
+				const button = form.querySelector("button[type='submit']");
+				if (!button) {
+					return () => {};
+				}
+				const updateButton = () => {
+					const enabled = Boolean(shouldEnable());
+					button.disabled = !enabled;
+					button.classList.toggle("is-active", enabled);
+				};
+				updateButton();
+				form.addEventListener("submit", () => {
+					button.disabled = true;
+					button.classList.remove("is-active");
+					const formType = form.dataset.formType;
+					if (formType) {
+						sessionStorage.setItem(SAVED_FORM_KEY, formType);
+					}
+				});
+				return updateButton;
+			}
+
+			function showSavedMessageForForms() {
+				document.querySelectorAll("form[data-form-type]").forEach((form) => {
+					if (sessionStorage.getItem(SAVED_FORM_KEY) === form.dataset.formType) {
+						sessionStorage.removeItem(SAVED_FORM_KEY);
+						showConfirm(form);
+					}
+				});
+			}
+
+			const displayForm = document.querySelector("form[data-form-type='display_name']");
+			if (displayForm) {
+				const displayInput = displayForm.querySelector("#display_name");
+				const initialValue = displayInput?.value ?? "";
+				const updateDisplayButton = registerForm(displayForm, () => displayInput && displayInput.value !== initialValue);
+				displayInput?.addEventListener("input", updateDisplayButton);
+			}
+
+			const passwordForm = document.getElementById("passwordForm");
+			if (passwordForm) {
+				const passwordSubmit = passwordForm.querySelector("button[type='submit']");
+				const passwordInputs = Array.from(passwordForm.querySelectorAll("input[type='password']"));
+				const newPassword = document.getElementById("new_password");
+				const confirmNewPassword = document.getElementById("confirm_new_password");
+				let debounceTimer = null;
+				const DELAY = 400;
+
+				const applyError = () => confirmNewPassword?.classList.add("error");
+				const removeError = () => confirmNewPassword?.classList.remove("error");
+
+				const handleInput = () => {
+					if (!newPassword || !confirmNewPassword) {
+						return;
+					}
+					const p = newPassword.value;
+					const c = confirmNewPassword.value;
+					if (p === c && c.length > 0) {
+						clearTimeout(debounceTimer);
+						removeError();
+						return;
+					}
+					clearTimeout(debounceTimer);
+					debounceTimer = setTimeout(() => {
+						if (
+							newPassword &&
+							confirmNewPassword &&
+							newPassword.value !== confirmNewPassword.value &&
+							confirmNewPassword.value.length > 0
+						) {
+							applyError();
+						}
+					}, DELAY);
+				};
+
+				const updatePasswordButton = () => {
+					const hasInput = passwordInputs.some((input) => input.value.length > 0);
+					if (!passwordSubmit) {
+						return;
+					}
+					passwordSubmit.disabled = !hasInput;
+					passwordSubmit.classList.toggle("is-active", hasInput);
+				};
+
+				passwordInputs.forEach((input) => {
+					input.addEventListener("input", () => {
+						handleInput();
+						updatePasswordButton();
+					});
+				});
+				updatePasswordButton();
+
+				passwordForm.addEventListener("submit", (e) => {
+					clearTimeout(debounceTimer);
+					if (!newPassword || !confirmNewPassword || newPassword.value !== confirmNewPassword.value) {
+						applyError();
+						e.preventDefault();
+						return;
+					}
+					if (passwordSubmit) {
+						passwordSubmit.disabled = true;
+						passwordSubmit.classList.remove("is-active");
+					}
+					const type = passwordForm.dataset.formType;
+					if (type) {
+						sessionStorage.setItem(SAVED_FORM_KEY, type);
+					}
+				});
+			}
+
+			showSavedMessageForForms();
+		})();
 	</script>
 </body>
 </html>

@@ -7,8 +7,8 @@ from random import choice
 from typing import Optional
 from pathlib import Path
 from hashlib import sha256
-from lib.database import create_db, query_db, execute_db
-import uvicorn, secrets, json
+from lib.database import create_db, query_db, execute_db, ensure_device_name_unique
+import uvicorn, secrets, json, base64, mimetypes
 
 class WebPortal:
 	def __init__(self, host:str = "0.0.0.0", port:int = 80, session_ttl:int = 12, persistant_ttl: int = 720):
@@ -18,6 +18,7 @@ class WebPortal:
 		self.PERSISTANT_TTL = persistant_ttl
 		self.base_dir = Path(__file__).resolve().parent.parent
 		self.app = FastAPI()
+		self.device_status = {}
 		self._setup_routes()
 		self.init_setup = False
 	
@@ -26,6 +27,11 @@ class WebPortal:
 		self.app.mount("/static", StaticFiles(directory=str(self.base_dir / "portal/static")), name="static")
 		templates = Jinja2Templates(directory=str(self.base_dir / "portal/templates"))
 		legal_acceptance_path = self.base_dir / "legal_acceptance.json"
+
+		@self.app.on_event("startup")
+		async def _startup():
+			if (self.base_dir / "cerberus.db").exists():
+				ensure_device_name_unique()
 		
 		def verify_session(request:Request, redirect:bool = True):
 			token = request.cookies.get("session")	
@@ -106,7 +112,22 @@ class WebPortal:
 		async def dashboard(request:Request):
 			user_info = verify_session(request)
 			display_name = user_info[0]["display_name"]
-			return templates.TemplateResponse("dashboard.html", {"request": request, "display_name": display_name}, status_code=200)
+			device_row = query_db(
+				"SELECT device_name, device_ip FROM devices ORDER BY device_id ASC LIMIT 1",
+				()
+			)
+			device_name = device_row[0]["device_name"] if device_row else "Child PC"
+			device_ip = device_row[0]["device_ip"] if device_row else "Unknown"
+			return templates.TemplateResponse(
+				"dashboard.html",
+				{
+					"request": request,
+					"display_name": display_name,
+					"device_name": device_name,
+					"device_ip": device_ip
+				},
+				status_code=200
+			)
 		
 		@self.app.get("/register", response_class = HTMLResponse)
 		async def register(request:Request):
@@ -124,7 +145,7 @@ class WebPortal:
 		async def settings(request:Request):
 			user_info = verify_session(request)
 			display_name = user_info[0]["display_name"]
-			child_row = query_db("SELECT device_ip FROM devices WHERE device_name = ? LIMIT 1", ("child_pc",))
+			child_row = query_db("SELECT device_ip FROM devices WHERE device_name = ? LIMIT 1", ("Child PC",))
 			child_ip = child_row[0]["device_ip"] if child_row else ""
 			discord_row = query_db("SELECT discord_webhook FROM settings WHERE profile = ? LIMIT 1", ("discord_webhook",))
 			discord_webhook = discord_row[0]["discord_webhook"] if discord_row else ""
@@ -231,13 +252,10 @@ class WebPortal:
 			events = query_db("""
 				SELECT
 					e.event_id,
-					e.device,
-					e.report,
-					e.full_image_path,
-					e.cell_image_path,
-					e.sound_path, e.event_type,
-					d.device_name,
-					t.event_type_name
+					d.device_name AS device_name,
+					t.name AS event_type,
+					json_extract(e.report, '$.severity') AS severity,
+					json_extract(e.report, '$.timestamp') AS timestamp
 				FROM events e
 				LEFT JOIN devices d ON e.device = d.device_id
 				LEFT JOIN event_types t ON e.event_type = t.event_type_id
@@ -247,6 +265,86 @@ class WebPortal:
 				(count, offset)
 			)
 			return {"page": page, "count": count, "total_count": total_count, "events": events}
+
+		@self.app.post("/api/event")
+		async def api_event(request:Request, event_id:int):
+			event_rows = query_db("""
+				SELECT
+					e.event_id,
+					d.device_name AS device_name,
+					e.report,
+					e.full_image_path,
+					e.cell_image_path,
+					e.sound_path,
+					t.name AS event_type
+				FROM events e
+				LEFT JOIN devices d ON e.device = d.device_id
+				LEFT JOIN event_types t ON e.event_type = t.event_type_id
+				WHERE e.event_id = ?
+				LIMIT 1
+				""",
+				(event_id,)
+			)
+			if not event_rows:
+				raise HTTPException(status_code=404, detail="Event not found")
+
+			row = event_rows[0]
+			report_data = {}
+			if row.get("report"):
+				try:
+					report_data = json.loads(row["report"])
+				except Exception:
+					report_data = {}
+
+			def load_media(path_value:Optional[str]):
+				if not path_value:
+					return None, None, None
+				path = Path(path_value)
+				if not path.exists() or not path.is_file():
+					return None, None, None
+				mime, _ = mimetypes.guess_type(str(path))
+				if not mime:
+					mime = "application/octet-stream"
+				data = base64.b64encode(path.read_bytes()).decode("ascii")
+				return data, mime, path.name
+
+			image_path = row.get("full_image_path") or row.get("cell_image_path")
+			image_data, image_mime, image_name = load_media(image_path)
+			audio_data, audio_mime, audio_name = load_media(row.get("sound_path"))
+
+			return {
+				"event_id": row.get("event_id"),
+				"event_type": row.get("event_type"),
+				"device_name": row.get("device_name"),
+				"severity": report_data.get("severity"),
+				"timestamp": report_data.get("timestamp"),
+				"image_data": image_data,
+				"image_mime": image_mime,
+				"image_name": image_name,
+				"audio_data": audio_data,
+				"audio_mime": audio_mime,
+				"audio_name": audio_name,
+			}
+
+		@self.app.get("/api/device-status")
+		async def api_device_status_get(request:Request):
+			return {"status": self.device_status}
+
+		@self.app.post("/api/device-status")
+		async def api_device_status_post(request:Request):
+			try:
+				payload = await request.json()
+			except Exception:
+				payload = None
+			if payload is None:
+				raise HTTPException(status_code=400, detail="Expected JSON payload")
+			if not isinstance(payload, dict):
+				raise HTTPException(status_code=400, detail="Payload must be a JSON object")
+
+			for key, value in payload.items():
+				self.device_status[key] = value
+			self.device_status["updated_at"] = datetime.now(timezone.utc).isoformat()
+			return {"status": self.device_status}
 		
 		@self.app.post("/api/account")
 		async def api_account(request:Request):
@@ -281,15 +379,27 @@ class WebPortal:
 			if form_type == "child_ip":
 				child_ip = str(form.get("child_ip", "")).strip()
 				if child_ip:
-					execute_db("DELETE FROM devices WHERE device_name = ?", ("child_pc",))
-					execute_db("INSERT INTO devices (device_name, device_ip) VALUES (?, ?)", ("child_pc", child_ip))
+					existing = query_db(
+						"SELECT device_id FROM devices WHERE device_name = ? ORDER BY device_id LIMIT 1",
+						("Child PC",),
+					)
+					if existing:
+						execute_db(
+							"UPDATE devices SET device_ip = ? WHERE device_id = ?",
+							(child_ip, existing[0]["device_id"]),
+						)
+					else:
+						execute_db(
+							"INSERT INTO devices (device_name, device_ip) VALUES (?, ?)",
+							("Child PC", child_ip),
+						)
 			elif form_type == "discord_webhook":
 				discord_webhook = str(form.get("discord_webhook", "")).strip()
 				if discord_webhook:
 					execute_db("DELETE FROM settings WHERE profile = ?", ("discord_webhook",))
 					execute_db("INSERT INTO settings (profile, discord_webhook) VALUES (?, ?)", ("discord_webhook", discord_webhook))
 			return RedirectResponse("/settings", status_code=303)
-			
+		
 		
 		@self.app.get("/test")
 		async def test(request:Request):

@@ -44,11 +44,15 @@
 		</div>
 
 		<div class="stats">
-			<a class="card card--action" href="/backlog" aria-label="Open processing backlog details">
-				<h2 class="mutedSmall">Processing Backlog</h2>
-				<p class="statValue">{{ backlog_count if backlog_count is defined else 0 }}</p>
-				<p class="mutedSmall">images waiting</p>
-			</a>
+			<div class="card deviceStatus" aria-live="polite">
+				<div class="deviceStatus__head">
+					<span id="deviceStatusDot" class="deviceStatus__dot deviceStatus__dot--offline" aria-hidden="true"></span>
+					<div class="deviceStatus__text">
+						<p class="deviceStatus__name">{{ device_name }}</p>
+						<p class="mutedSmall deviceStatus__ip">{{ device_ip }}</p>
+					</div>
+				</div>
+			</div>
 
 			<a class="card card--action" href="/processing-metrics" aria-label="Open average speed details">
 				<h2 class="mutedSmall">Avg Speed</h2>
@@ -86,54 +90,119 @@
 
 	</main>
 
+	<div id="eventModal" class="modal modal--hidden" aria-hidden="true">
+		<div class="modal__backdrop" data-close="true"></div>
+		<div class="modal__panel" role="dialog" aria-modal="true" aria-labelledby="eventModalTitle">
+			<div class="modal__header">
+				<h3 id="eventModalTitle" class="sectionTitle">Event Details</h3>
+				<button class="btnSecondary modal__close" type="button">Close</button>
+			</div>
+			<div id="eventModalContent" class="modal__content">Loading...</div>
+		</div>
+	</div>
+
 	<script>
-		var demo_mode = false;
-		var EVENTS_PER_PAGE = 7;
-		var currentPage = 1;
+		var DEVICE_STATUS_POLL_MS = 5*60*1000;
+		var deviceStatusTimer = null;
 
-		function getDemoEvents(){
-			const now = Date.now();
-			const h = n => now - n*3600000;
-			const d = n => now - n*86400000;
-
-			return [
-				{ id:"EVT-1001", timestamp:h(2), severity:"high", device:"Kid-PC", type:"image", title:"NSFW image detected" },
-				{ id:"EVT-1002", timestamp:h(5), severity:"med", device:"Kid-Phone", type:"text", title:"Sensitive phrase detected" },
-				{ id:"EVT-1003", timestamp:d(1), severity:"low", device:"Kid-Tablet", type:"system", title:"Device connected" },
-				{ id:"EVT-1004", timestamp:d(3), severity:"high", device:"Kid-Phone", type:"text", title:"Threat keyword detected" },
-				{ id:"EVT-1005", timestamp:d(4), severity:"med", device:"Kid-PC", type:"image", title:"Image flagged" },
-				{ id:"EVT-1006", timestamp:d(5), severity:"low", device:"Kid-Tablet", type:"system", title:"Device connected" },
-				{ id:"EVT-1007", timestamp:d(6), severity:"high", device:"Kid-Phone", type:"text", title:"Threat keyword detected" },
-				{ id:"EVT-1008", timestamp:d(7), severity:"med", device:"Kid-PC", type:"image", title:"Image flagged" },
-				{ id:"EVT-1009", timestamp:d(8), severity:"low", device:"Kid-Tablet", type:"system", title:"Device connected" },
-				{ id:"EVT-1010", timestamp:d(9), severity:"high", device:"Kid-Phone", type:"text", title:"Threat keyword detected" }
-			];
+		async function fetchDeviceStatus(){
+			const res = await fetch("/api/device-status", {method:"GET", credentials:"include"});
+			if(!res.ok) throw new Error("Failed to load device status");
+			return await res.json();
 		}
 
-		async function fetchEvents(page){
-			if(demo_mode){
-				const events = getDemoEvents().sort((a,b)=>b.timestamp-a.timestamp);
-				const total_count = events.length;
-				const start = (page - 1) * EVENTS_PER_PAGE;
-				const paged = events.slice(start, start + EVENTS_PER_PAGE);
-				return { page, count: EVENTS_PER_PAGE, total_count, events: paged };
-			}
+		function applyDeviceStatus(payload){
+			const dot = document.getElementById("deviceStatusDot");
+			if(!dot) return;
+			const status = payload && payload.status ? payload.status : {};
+			const connected = Boolean(status.vnc_connected);
+			dot.classList.toggle("deviceStatus__dot--online", connected);
+			dot.classList.toggle("deviceStatus__dot--offline", !connected);
+			dot.setAttribute("title", connected ? "VNC connected" : "VNC disconnected");
+		}
 
-			const url = `/api/events?page=${page}&count=${EVENTS_PER_PAGE}`;
+		async function refreshDeviceStatus(){
+			try{
+				const payload = await fetchDeviceStatus();
+				applyDeviceStatus(payload);
+			}catch(err){
+				applyDeviceStatus({status:{vnc_connected:false}});
+			}
+		}
+
+		var EVENTS_PER_PAGE = 10;
+		var CACHE_COUNT = 200;
+		var currentPage = 1;
+		var cachedEvents = [];
+		var cachedTotalCount = 0;
+		var cachedPageCount = 0;
+		var preloadPromise = null;
+
+		async function fetchEvents(page, count){
+			const url = `/api/events?page=${page}&count=${count}`;
 			const res = await fetch(url, {method:"POST", credentials:"include"});
 			if(!res.ok) throw new Error("Failed to load events");
 			return await res.json();
 		}
 
-		function extractTimestamp(event){
-			if(event.timestamp) return event.timestamp;
-			if(event.report && typeof event.report === "string"){
-				try{
-					const parsed = JSON.parse(event.report);
-					if(parsed && parsed.timestamp) return parsed.timestamp;
-				}catch(err){}
+		async function preloadEvents(){
+			const payload = await fetchEvents(1, CACHE_COUNT);
+			cachedEvents = payload.events || [];
+			cachedTotalCount = payload.total_count || 0;
+			cachedPageCount = Math.ceil(Math.min(cachedTotalCount, CACHE_COUNT) / EVENTS_PER_PAGE);
+			return payload;
+		}
+
+		async function fetchEventsPage(page){
+			if(cachedEvents.length && page <= cachedPageCount){
+				const start = (page - 1) * EVENTS_PER_PAGE;
+				const end = start + EVENTS_PER_PAGE;
+				return {
+					events: cachedEvents.slice(start, end),
+					total_count: cachedTotalCount
+				};
 			}
-			return null;
+			return await fetchEvents(page, EVENTS_PER_PAGE);
+		}
+
+		async function fetchEventDetails(eventId){
+			const url = `/api/event?event_id=${eventId}`;
+			const res = await fetch(url, {method:"POST", credentials:"include"});
+			if(!res.ok) throw new Error("Failed to load event details");
+			return await res.json();
+		}
+
+		function formatTimestamp(value){
+			if(!value) return "Unknown";
+			const date = new Date(value);
+			if(Number.isNaN(date.getTime())) return String(value);
+			return date.toLocaleString();
+		}
+
+		function escapeHtml(value){
+			return String(value ?? "").replace(/[&<>"']/g, function(match){
+				return {
+					"&": "&amp;",
+					"<": "&lt;",
+					">": "&gt;",
+					"\"": "&quot;",
+					"'": "&#39;"
+				}[match];
+			});
+		}
+
+		function normalizeSeverity(value){
+			const raw = String(value || "low").toLowerCase();
+			if(raw.startsWith("high")) return {label:"HIGH", cls:"high"};
+			if(raw.startsWith("med")) return {label:"MED", cls:"med"};
+			if(raw.startsWith("medium")) return {label:"MED", cls:"med"};
+			return {label: raw.toUpperCase(), cls: "low"};
+		}
+
+		function titleCase(value){
+			const text = String(value || "unknown").trim().toLowerCase();
+			if(!text) return "Unknown";
+			return text.charAt(0).toUpperCase() + text.slice(1);
 		}
 
 		function renderEvents(events){
@@ -146,30 +215,40 @@
 				<table class="table">
 					<thead>
 						<tr>
-							<th>Event</th>
-							<th>Device</th>
+							<th>Event Type</th>
+							<th>Device Name</th>
 							<th>Severity</th>
-							<th>Time</th>
+							<th>Timestamp</th>
 						</tr>
 					</thead>
 					<tbody>
 			`;
 
 			for(const e of events){
-				const timestamp = extractTimestamp(e);
-				const date = timestamp ? new Date(timestamp).toLocaleString() : "Unknown";
+				const date = formatTimestamp(e.timestamp);
+				const severity = normalizeSeverity(e.severity);
 				html += `
-					<tr>
-						<td>${e.title || e.report || "Event"}</td>
-						<td>${e.device || e.device_name || "Unknown"}</td>
-						<td><span class="badge ${e.severity || "low"}">${(e.severity || "low").toUpperCase()}</span></td>
-						<td>${date}</td>
+					<tr class="eventRow" data-event-id="${e.event_id}" tabindex="0" role="button" aria-label="View event details">
+						<td>${escapeHtml(titleCase(e.event_type))}</td>
+						<td>${escapeHtml(e.device_name || "Unknown")}</td>
+						<td><span class="badge ${severity.cls}">${severity.label}</span></td>
+						<td>${escapeHtml(date)}</td>
 					</tr>
 				`;
 			}
 
 			html += "</tbody></table>";
 			document.getElementById("eventsContainer").innerHTML = html;
+
+			document.querySelectorAll(".eventRow").forEach(row=>{
+				row.addEventListener("click", ()=> openEventModal(row.getAttribute("data-event-id")));
+				row.addEventListener("keydown", (event)=>{
+					if(event.key === "Enter" || event.key === " "){
+						event.preventDefault();
+						openEventModal(row.getAttribute("data-event-id"));
+					}
+				});
+			});
 		}
 
 		function renderPagination(totalCount){
@@ -187,8 +266,8 @@
 			const nextDisabled = currentPage === totalPages ? "disabled" : "";
 			html += `<button class="btnSecondary" type="button" data-page="${currentPage-1}" ${prevDisabled}>Prev</button>`;
 			for(let i=1;i<=totalPages;i++){
-				const active = i === currentPage ? "btnPrimary" : "btnSecondary";
-				html += `<button class="${active}" type="button" data-page="${i}">${i}</button>`;
+				const active = i === currentPage ? "is-active" : "";
+				html += `<button class="btnSecondary ${active}" type="button" data-page="${i}">${i}</button>`;
 			}
 			html += `<button class="btnSecondary" type="button" data-page="${currentPage+1}" ${nextDisabled}>Next</button>`;
 			container.innerHTML = html;
@@ -208,19 +287,111 @@
 			const container = document.getElementById("eventsContainer");
 			container.innerHTML = "Loading...";
 			try{
-				const payload = await fetchEvents(currentPage);
+				if(!preloadPromise){
+					preloadPromise = preloadEvents().catch(()=> null);
+				}
+				await preloadPromise;
+				const payload = await fetchEventsPage(currentPage);
 				renderEvents(payload.events || []);
-				renderPagination(payload.total_count || 0);
+				renderPagination(payload.total_count || cachedTotalCount || 0);
 			}catch(err){
 				container.innerHTML = "Unable to load events.";
 			}
 		}
 
+		const modal = document.getElementById("eventModal");
+		const modalContent = document.getElementById("eventModalContent");
+
+		function openModal(){
+			modal.classList.remove("modal--hidden");
+			modal.setAttribute("aria-hidden", "false");
+			document.body.classList.add("modal-open");
+		}
+
+		function closeModal(){
+			modal.classList.add("modal--hidden");
+			modal.setAttribute("aria-hidden", "true");
+			document.body.classList.remove("modal-open");
+		}
+
+		async function openEventModal(eventId){
+			if(!eventId) return;
+			modalContent.innerHTML = "Loading...";
+			openModal();
+			try{
+				const detail = await fetchEventDetails(eventId);
+				const severity = normalizeSeverity(detail.severity);
+				const timestamp = formatTimestamp(detail.timestamp);
+				let mediaHtml = "";
+				if(detail.image_data && detail.image_mime){
+					mediaHtml += `
+						<div class="eventMedia__item">
+							<img src="data:${detail.image_mime};base64,${detail.image_data}" alt="Event capture image" />
+						</div>
+					`;
+				}
+				if(detail.audio_data && detail.audio_mime){
+					mediaHtml += `
+						<div class="eventMedia__item">
+							<audio controls src="data:${detail.audio_mime};base64,${detail.audio_data}"></audio>
+						</div>
+					`;
+				}
+				if(!mediaHtml){
+					mediaHtml = `<p class="mutedSmall">No media attached to this event.</p>`;
+				}
+
+				modalContent.innerHTML = `
+					<div class="eventMeta">
+						<div>
+							<p class="mutedSmall">Event Type</p>
+							<p>${escapeHtml(titleCase(detail.event_type))}</p>
+						</div>
+						<div>
+							<p class="mutedSmall">Device Name</p>
+							<p>${escapeHtml(detail.device_name || "Unknown")}</p>
+						</div>
+						<div>
+							<p class="mutedSmall">Severity</p>
+							<p><span class="badge ${severity.cls}">${severity.label}</span></p>
+						</div>
+						<div>
+							<p class="mutedSmall">Timestamp</p>
+							<p>${escapeHtml(timestamp)}</p>
+						</div>
+					</div>
+					<div class="eventMedia">
+						${mediaHtml}
+					</div>
+				`;
+			}catch(err){
+				modalContent.innerHTML = "<p class=\"mutedSmall\">Unable to load event details.</p>";
+			}
+		}
+
+		modal.addEventListener("click", function(event){
+			if(event.target && event.target.getAttribute("data-close") === "true"){
+				closeModal();
+			}
+		});
+		document.querySelector(".modal__close").addEventListener("click", closeModal);
+		document.addEventListener("keydown", function(event){
+			if(event.key === "Escape" && !modal.classList.contains("modal--hidden")){
+				closeModal();
+			}
+		});
+
 		document.getElementById("refreshEventsBtn").addEventListener("click", function(){
 			currentPage = 1;
+			cachedEvents = [];
+			cachedTotalCount = 0;
+			cachedPageCount = 0;
+			preloadPromise = null;
 			refreshEvents();
 		});
 		refreshEvents();
+		refreshDeviceStatus();
+		deviceStatusTimer = setInterval(refreshDeviceStatus, DEVICE_STATUS_POLL_MS);
 	</script>
 
 </body>
