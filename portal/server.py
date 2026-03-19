@@ -265,7 +265,8 @@ class WebPortal:
 				(count, offset)
 			)
 			return {"page": page, "count": count, "total_count": total_count, "events": events}
-
+		
+		# TODO: Make sure it can get events and images once everything else is setup.
 		@self.app.post("/api/event")
 		async def api_event(request:Request, event_id:int):
 			event_rows = query_db("""
