@@ -1,9 +1,10 @@
-from transformers import AutoImageProcessor, AutoModelForImageClassification
+from transformers import AutoImageProcessor, AutoModelForImageClassification, AutoModelForImageTextToText, AutoProcessor, AutoTokenizer, AutoModelForSequenceClassification
 import torch, gc
 from typing import Optional, Any
 from PIL import Image
 from huggingface_hub import snapshot_download
 from huggingface_hub.errors import LocalEntryNotFoundError
+import re
 
 class NSFWImageDetector:
 	"""Detect non‑safe‑for‑work content in images.
@@ -208,6 +209,245 @@ class NSFWImageDetector:
 			
 			if empty_cuda_cache and torch.cuda.is_available():
 				torch.cuda.empty_cache()
-	
-	
 
+
+class NSFWTextDetector:
+	"""Detect non-safe-for-work content in text."""
+	MODEL_ID: str = "michelleli99/NSFW_text_classifier"
+
+	def __init__(self, cache_dir: str = "./models/hf"):
+		self.tokenizer = None
+		self.model = None
+		self.device = None
+		self.cache_dir = cache_dir
+
+	def load(self):
+		self.tokenizer = AutoTokenizer.from_pretrained(
+			NSFWTextDetector.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
+
+		self.model = AutoModelForSequenceClassification.from_pretrained(
+			NSFWTextDetector.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
+
+		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+		self.model.to(self.device)
+		self.model.eval()
+		return self
+
+	def unload(self) -> None:
+		if self.model is None and self.tokenizer is None:
+			return
+
+		self.model = None
+		self.tokenizer = None
+		self.device = None
+
+		gc.collect()
+
+		if torch.cuda.is_available():
+			torch.cuda.empty_cache()
+			torch.cuda.ipc_collect()
+
+	def is_loaded(self) -> bool:
+		return self.model is not None and self.tokenizer is not None and self.device is not None
+
+	def is_model_downloaded(self) -> bool:
+		try:
+			snapshot_download(
+				repo_id=NSFWTextDetector.MODEL_ID,
+				revision=None,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
+			return True
+		except LocalEntryNotFoundError:
+			return False
+
+	def download_model(self) -> None:
+		snapshot_download(
+			repo_id=NSFWTextDetector.MODEL_ID,
+			revision=None,
+			cache_dir=self.cache_dir
+		)
+
+	def classify(self, text: str, top_k: Optional[int] = None, empty_cuda_cache: bool = False) -> list[dict[str, Any]]:
+		if self.model is None or self.tokenizer is None or self.device is None:
+			raise RuntimeError("Call load() before classify().")
+
+		inputs = None
+		outputs = None
+		logits_cpu = None
+		probs = None
+		indices = None
+
+		try:
+			inputs = self.tokenizer(text, return_tensors="pt", truncation=True)
+			inputs = {k: v.to(self.device, non_blocking=True) for k, v in inputs.items()}
+
+			with torch.no_grad():
+				outputs = self.model(**inputs)
+
+			logits_cpu = outputs.logits[0].detach().float().cpu()
+			probs = torch.softmax(logits_cpu, dim=-1)
+			id2label = self.model.config.id2label
+
+			num_labels = probs.numel()
+			if top_k is not None and (top_k <= 0 or top_k > num_labels):
+				raise ValueError(f"top_k must be in 1..{num_labels}, got {top_k}")
+
+			if top_k is None:
+				indices = torch.argsort(probs, descending=True)
+			else:
+				indices = torch.topk(probs, k=top_k).indices
+
+			return [
+				{"label": id2label[int(i)], "score": float(probs[int(i)].item())}
+				for i in indices
+			]
+		finally:
+			if inputs is not None:
+				for k in list(inputs.keys()):
+					inputs[k] = None
+			inputs = None
+			outputs = None
+			logits_cpu = None
+			probs = None
+			indices = None
+
+			if empty_cuda_cache and torch.cuda.is_available():
+				torch.cuda.empty_cache()
+
+
+class TextExtractor:
+	"""Extract text from images with GLM-OCR."""
+	MODEL_ID: str = "zai-org/GLM-OCR"
+
+	def __init__(self, cache_dir: str = "./models/hf"):
+		self.processor = None
+		self.tokenizer = None
+		self.model = None
+		self.device = None
+		self.cache_dir = cache_dir
+
+	def _normalize_text(self, text: str) -> str:
+		"""Return OCR text in a classifier-friendly form."""
+		text = text.replace("\u00a0", " ")
+		text = text.replace("\r\n", "\n").replace("\r", "\n")
+		text = re.sub(r"[ \t]+", " ", text)
+		text = re.sub(r"\n{3,}", "\n\n", text)
+		return text.strip()
+
+	def load(self):
+		self.processor = AutoProcessor.from_pretrained(
+			TextExtractor.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
+
+		self.tokenizer = AutoTokenizer.from_pretrained(
+			TextExtractor.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
+
+		self.model = AutoModelForImageTextToText.from_pretrained(
+			TextExtractor.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
+
+		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+		self.model.to(self.device) # type: ignore
+		self.model.eval()
+		return self
+
+	def unload(self) -> None:
+		if self.model is None and self.processor is None and self.tokenizer is None:
+			return
+
+		self.processor = None
+		self.tokenizer = None
+		self.model = None
+		self.device = None
+
+		gc.collect()
+
+		if torch.cuda.is_available():
+			torch.cuda.empty_cache()
+			torch.cuda.ipc_collect()
+
+	def is_loaded(self) -> bool:
+		return self.model is not None and self.processor is not None and self.tokenizer is not None and self.device is not None
+
+	def is_model_downloaded(self) -> bool:
+		try:
+			snapshot_download(
+				repo_id=TextExtractor.MODEL_ID,
+				revision=None,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
+			return True
+		except LocalEntryNotFoundError:
+			return False
+
+	def download_model(self) -> None:
+		snapshot_download(
+			repo_id=TextExtractor.MODEL_ID,
+			revision=None,
+			cache_dir=self.cache_dir
+		)
+
+	def extract(self, image: Image.Image, prompt: str = "Text Recognition:", max_new_tokens: int = 512, empty_cuda_cache: bool = False) -> str:
+		if self.model is None or self.processor is None or self.tokenizer is None or self.device is None:
+			raise RuntimeError("Call load() before extract().")
+
+		inputs = None
+		output_ids = None
+		output_text = None
+
+		try:
+			if image.mode != "RGB":
+				image = image.convert("RGB")
+
+			messages = [
+				{
+					"role": "user",
+					"content": [
+						{"type": "image", "image": image},
+						{"type": "text", "text": prompt},
+					],
+				}
+			]
+
+			inputs = self.processor.apply_chat_template(
+				messages,
+				tokenize=True,
+				add_generation_prompt=True,
+				return_dict=True,
+				return_tensors="pt",
+			)
+			inputs = inputs.to(self.device)
+			if "token_type_ids" in inputs:
+				inputs.pop("token_type_ids")
+
+			with torch.no_grad():
+				output_ids = self.model.generate(**inputs, max_new_tokens=max_new_tokens)
+
+			input_len = inputs["input_ids"].shape[1]
+			output_text = self.processor.decode(output_ids[0][input_len:], skip_special_tokens=True)
+			return self._normalize_text(output_text)
+		finally:
+			inputs = None
+			output_ids = None
+			output_text = None
+
+			if empty_cuda_cache and torch.cuda.is_available():
+				torch.cuda.empty_cache()
+	
+	
