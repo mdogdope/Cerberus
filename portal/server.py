@@ -142,7 +142,7 @@ class WebPortal:
 			display_name = user_info[0]["display_name"]
 			child_row = query_db("SELECT device_ip FROM devices WHERE device_name = ? LIMIT 1", ("Child PC",))
 			child_ip = child_row[0]["device_ip"] if child_row else ""
-			discord_row = query_db("SELECT discord_webhook FROM settings WHERE profile = ? LIMIT 1", ("discord_webhook",))
+			discord_row = query_db("SELECT discord_webhook FROM settings WHERE profile = ? LIMIT 1", ("Default",))
 			discord_webhook = discord_row[0]["discord_webhook"] if discord_row else ""
 			return templates.TemplateResponse("settings.html", {"request": request, "display_name": display_name, "child_ip": child_ip, "discord_webhook": discord_webhook}, status_code=200)
 		

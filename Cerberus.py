@@ -1,4 +1,4 @@
-import threading, logging, random, time, datetime
+import threading, logging, random, time, datetime, json
 from pathlib import Path
 from PIL import Image
 from queue import LifoQueue
@@ -50,7 +50,7 @@ def vnc_client():
 	prev_img = None
 	while True:
 		try:
-			if check_vnc():
+			if not check_vnc():
 				client = VNC(ip_address=vnc_ip, port=vnc_port)
 				client.connect()
 			if client.is_connected():
@@ -58,8 +58,7 @@ def vnc_client():
 				if prev_img:
 					if not ImageCompare.is_similar(img, prev_img, threshold=0.02)[0]:
 						backlog.put(img)
-				else:
-					prev_img = img
+				prev_img = img
 			else:
 				client.reconnect()
 			
@@ -93,7 +92,7 @@ def create_event(result:dict):
 			vals.append(filename)
 		if "results" in result:
 			cols += ",report"
-			vals.append(result["results"])
+			vals.append(json.dumps(result["results"]))
 		if "cell" in result:
 			cols += ",cell_image_path"
 			filename = f"events/{timestamp}_cell.png"
@@ -109,11 +108,11 @@ def create_event(result:dict):
 			vals.append(0)
 		val_qs = ", " + ", ".join(["?"] * (len(vals) - 1))
 		query = f"INSERT INTO events ({cols}) VALUES (?{val_qs})"
-		query_db(query=query, params=tuple(vals))
+		execute_db(query=query, params=tuple(vals))
 		send_notification()
-	except:
+	except Exception:
 		logger = logging.getLogger("Detect_Thread")
-		logger.error("Could not make an event.")
+		logger.exception("Could not make an event.")
 
 def detect():
 	global backlog
@@ -126,18 +125,25 @@ def detect():
 	while True:
 		if not backlog.empty():
 			img = backlog.get()
-			
-			img_det.load()
-			image_result = img_clsf.classify(img)
-			if not image_result["passed"]:
-				create_event(image_result)
-			img_det.unload()
-			
-			txt_det.load()
-			txt_ext.load()
-			text_result = txt_clsf.classify(img)
-			if not text_result["passed"]:
-				create_event(text_result)
+			try:
+				img_det.load()
+				image_result = img_clsf.classify(img)
+				if not image_result["passed"]:
+					create_event(image_result)
+				img_det.unload()
+
+				txt_det.load()
+				txt_ext.load()
+				text_result = txt_clsf.classify(img)
+				if not text_result["passed"]:
+					create_event(text_result)
+			except Exception:
+				logger = logging.getLogger("Detect_Thread")
+				logger.exception("Detection loop failed for an image.")
+			finally:
+				img_det.unload()
+				txt_det.unload()
+				txt_ext.unload()
 		time.sleep(0.01)
 
 
