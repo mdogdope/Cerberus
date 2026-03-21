@@ -75,39 +75,3 @@ def create_db():
 			conn.executescript(f.read())
 	finally:
 		conn.close()
-
-def ensure_device_name_unique():
-	with _WRITE_LOCK:
-		conn = _open_rw()
-		try:
-			conn.execute("BEGIN IMMEDIATE")
-			conn.execute("PRAGMA foreign_keys=ON")
-			dup_names = conn.execute(
-				"""
-				SELECT device_name, MIN(device_id) AS keep_id
-				FROM devices
-				GROUP BY device_name
-				HAVING COUNT(*) > 1
-				"""
-			).fetchall()
-			for row in dup_names:
-				name = row["device_name"]
-				keep_id = row["keep_id"]
-				dup_ids = conn.execute(
-					"SELECT device_id FROM devices WHERE device_name = ? AND device_id <> ?",
-					(name, keep_id),
-				).fetchall()
-				for dup in dup_ids:
-					dup_id = dup["device_id"]
-					# Re-point events to the kept device id before deleting duplicates.
-					conn.execute("UPDATE events SET device = ? WHERE device = ?", (keep_id, dup_id))
-					conn.execute("DELETE FROM devices WHERE device_id = ?", (dup_id,))
-			conn.execute(
-				"CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_device_name_unique ON devices(device_name)"
-			)
-			conn.execute("COMMIT")
-		except Exception:
-			conn.execute("ROLLBACK")
-			raise
-		finally:
-			conn.close()

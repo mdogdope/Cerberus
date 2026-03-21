@@ -1,10 +1,34 @@
 from transformers import AutoImageProcessor, AutoModelForImageClassification, AutoModelForImageTextToText, AutoProcessor, AutoTokenizer, AutoModelForSequenceClassification
 import torch, gc
 from typing import Optional, Any
+from pathlib import Path
 from PIL import Image
 from huggingface_hub import snapshot_download
 from huggingface_hub.errors import LocalEntryNotFoundError
 import re
+
+
+def _local_model_dir(cache_dir: str, model_id: str) -> Path:
+	return Path(cache_dir) / model_id.replace("/", "__")
+
+
+_CPU_MODE_SETTINGS_APPLIED = False
+
+
+def _apply_cpu_mode_settings() -> None:
+	global _CPU_MODE_SETTINGS_APPLIED
+
+	if _CPU_MODE_SETTINGS_APPLIED:
+		return
+
+	try:
+		torch.set_num_threads(4)
+		torch.set_num_interop_threads(2)
+	except RuntimeError:
+		if torch.get_num_threads() != 4 or torch.get_num_interop_threads() != 2:
+			raise
+
+	_CPU_MODE_SETTINGS_APPLIED = True
 
 class NSFWImageDetector:
 	"""Detect non‑safe‑for‑work content in images.
@@ -15,7 +39,7 @@ class NSFWImageDetector:
 	are downloaded or moved to GPU.
 	"""
 	MODEL_ID: str = "Freepik/nsfw_image_detector"
-	def __init__(self, cache_dir: str = "./models/hf"):
+	def __init__(self, cache_dir: str = "./models/hf", cpu_mode: bool = False):
 		"""Create an uninitialised detector.
 	
 		The :pyattr:`processor`, :pyattr:`model` and :pyattr:`device`
@@ -27,7 +51,10 @@ class NSFWImageDetector:
 		self.model = None
 		self.device = None
 		self.cache_dir = cache_dir
-		pass
+		self.cpu_mode = cpu_mode
+
+		if self.cpu_mode:
+			_apply_cpu_mode_settings()
 
 	def load(self):
 		"""Load the Hugging Face model and processor.
@@ -54,7 +81,7 @@ class NSFWImageDetector:
 			local_files_only=True
 		)
 		
-		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+		self.device = torch.device("cpu" if self.cpu_mode else ("cuda:0" if torch.cuda.is_available() else "cpu"))
 		self.model.to(self.device)
 		self.model.eval()
 		return self
@@ -212,29 +239,43 @@ class NSFWImageDetector:
 
 
 class NSFWTextDetector:
-	"""Detect non-safe-for-work content in text."""
+	"""Detect NSFW or SFW content in text."""
 	MODEL_ID: str = "michelleli99/NSFW_text_classifier"
 
-	def __init__(self, cache_dir: str = "./models/hf"):
+	def __init__(self, cache_dir: str = "./models/hf", cpu_mode: bool = False):
 		self.tokenizer = None
 		self.model = None
 		self.device = None
 		self.cache_dir = cache_dir
+		self.cpu_mode = cpu_mode
+
+		if self.cpu_mode:
+			_apply_cpu_mode_settings()
+
+	def _model_dir(self) -> Path:
+		return _local_model_dir(self.cache_dir, NSFWTextDetector.MODEL_ID)
 
 	def load(self):
-		self.tokenizer = AutoTokenizer.from_pretrained(
-			NSFWTextDetector.MODEL_ID,
-			cache_dir=self.cache_dir,
-			local_files_only=True
-		)
+		model_dir = self._model_dir()
+		model_source = str(model_dir) if model_dir.exists() else NSFWTextDetector.MODEL_ID
 
-		self.model = AutoModelForSequenceClassification.from_pretrained(
-			NSFWTextDetector.MODEL_ID,
-			cache_dir=self.cache_dir,
-			local_files_only=True
-		)
+		if model_dir.exists():
+			self.tokenizer = AutoTokenizer.from_pretrained(model_source)
+			self.model = AutoModelForSequenceClassification.from_pretrained(model_source)
+		else:
+			self.tokenizer = AutoTokenizer.from_pretrained(
+				model_source,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
 
-		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+			self.model = AutoModelForSequenceClassification.from_pretrained(
+				model_source,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
+
+		self.device = torch.device("cpu" if self.cpu_mode else ("cuda:0" if torch.cuda.is_available() else "cpu"))
 		self.model.to(self.device)
 		self.model.eval()
 		return self
@@ -257,22 +298,15 @@ class NSFWTextDetector:
 		return self.model is not None and self.tokenizer is not None and self.device is not None
 
 	def is_model_downloaded(self) -> bool:
-		try:
-			snapshot_download(
-				repo_id=NSFWTextDetector.MODEL_ID,
-				revision=None,
-				cache_dir=self.cache_dir,
-				local_files_only=True
-			)
-			return True
-		except LocalEntryNotFoundError:
-			return False
+		model_dir = self._model_dir()
+		return model_dir.exists() and any(model_dir.iterdir())
 
 	def download_model(self) -> None:
 		snapshot_download(
 			repo_id=NSFWTextDetector.MODEL_ID,
 			revision=None,
-			cache_dir=self.cache_dir
+			local_dir=str(self._model_dir()),
+			local_dir_use_symlinks=False
 		)
 
 	def classify(self, text: str, top_k: Optional[int] = None, empty_cuda_cache: bool = False) -> list[dict[str, Any]]:
@@ -296,6 +330,15 @@ class NSFWTextDetector:
 			probs = torch.softmax(logits_cpu, dim=-1)
 			id2label = self.model.config.id2label
 
+			def normalize_label(index: int) -> str:
+				raw_label = id2label.get(index, id2label.get(str(index), f"LABEL_{index}"))
+				label = str(raw_label).strip().upper()
+				if label in {"SAFE FOR WORK", "SFW", "SAFE"}:
+					return "SFW"
+				if label in {"NOT SAFE FOR WORK", "NSFW"}:
+					return "NSFW"
+				return label
+
 			num_labels = probs.numel()
 			if top_k is not None and (top_k <= 0 or top_k > num_labels):
 				raise ValueError(f"top_k must be in 1..{num_labels}, got {top_k}")
@@ -306,7 +349,7 @@ class NSFWTextDetector:
 				indices = torch.topk(probs, k=top_k).indices
 
 			return [
-				{"label": id2label[int(i)], "score": float(probs[int(i)].item())}
+				{"label": normalize_label(int(i)), "score": float(probs[int(i)].item())}
 				for i in indices
 			]
 		finally:
@@ -327,12 +370,19 @@ class TextExtractor:
 	"""Extract text from images with GLM-OCR."""
 	MODEL_ID: str = "zai-org/GLM-OCR"
 
-	def __init__(self, cache_dir: str = "./models/hf"):
+	def __init__(self, cache_dir: str = "./models/hf", cpu_mode: bool = False):
 		self.processor = None
 		self.tokenizer = None
 		self.model = None
 		self.device = None
 		self.cache_dir = cache_dir
+		self.cpu_mode = cpu_mode
+
+		if self.cpu_mode:
+			_apply_cpu_mode_settings()
+
+	def _model_dir(self) -> Path:
+		return _local_model_dir(self.cache_dir, TextExtractor.MODEL_ID)
 
 	def _normalize_text(self, text: str) -> str:
 		"""Return OCR text in a classifier-friendly form."""
@@ -343,25 +393,33 @@ class TextExtractor:
 		return text.strip()
 
 	def load(self):
-		self.processor = AutoProcessor.from_pretrained(
-			TextExtractor.MODEL_ID,
-			cache_dir=self.cache_dir,
-			local_files_only=True
-		)
+		model_dir = self._model_dir()
+		model_source = str(model_dir) if model_dir.exists() else TextExtractor.MODEL_ID
 
-		self.tokenizer = AutoTokenizer.from_pretrained(
-			TextExtractor.MODEL_ID,
-			cache_dir=self.cache_dir,
-			local_files_only=True
-		)
+		if model_dir.exists():
+			self.processor = AutoProcessor.from_pretrained(model_source)
+			self.tokenizer = AutoTokenizer.from_pretrained(model_source)
+			self.model = AutoModelForImageTextToText.from_pretrained(model_source)
+		else:
+			self.processor = AutoProcessor.from_pretrained(
+				model_source,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
 
-		self.model = AutoModelForImageTextToText.from_pretrained(
-			TextExtractor.MODEL_ID,
-			cache_dir=self.cache_dir,
-			local_files_only=True
-		)
+			self.tokenizer = AutoTokenizer.from_pretrained(
+				model_source,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
 
-		self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+			self.model = AutoModelForImageTextToText.from_pretrained(
+				model_source,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
+
+		self.device = torch.device("cpu" if self.cpu_mode else ("cuda:0" if torch.cuda.is_available() else "cpu"))
 		self.model.to(self.device) # type: ignore
 		self.model.eval()
 		return self
@@ -385,22 +443,15 @@ class TextExtractor:
 		return self.model is not None and self.processor is not None and self.tokenizer is not None and self.device is not None
 
 	def is_model_downloaded(self) -> bool:
-		try:
-			snapshot_download(
-				repo_id=TextExtractor.MODEL_ID,
-				revision=None,
-				cache_dir=self.cache_dir,
-				local_files_only=True
-			)
-			return True
-		except LocalEntryNotFoundError:
-			return False
+		model_dir = self._model_dir()
+		return model_dir.exists() and any(model_dir.iterdir())
 
 	def download_model(self) -> None:
 		snapshot_download(
 			repo_id=TextExtractor.MODEL_ID,
 			revision=None,
-			cache_dir=self.cache_dir
+			local_dir=str(self._model_dir()),
+			local_dir_use_symlinks=False
 		)
 
 	def extract(self, image: Image.Image, prompt: str = "Text Recognition:", max_new_tokens: int = 512, empty_cuda_cache: bool = False) -> str:

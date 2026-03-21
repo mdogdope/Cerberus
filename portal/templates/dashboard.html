@@ -205,6 +205,57 @@
 			return text.charAt(0).toUpperCase() + text.slice(1);
 		}
 
+		function scoreToPercent(value){
+			const number = Number(value);
+			if(!Number.isFinite(number)) return "0.00%";
+			const normalized = number > 1 ? number / 100 : number;
+			const clamped = Math.max(0, Math.min(normalized, 1));
+			return `${(clamped * 100).toFixed(2)}%`;
+		}
+
+		function normalizeReportMap(report){
+			const map = {};
+			if(!Array.isArray(report)) return map;
+			for(const row of report){
+				if(!row || typeof row !== "object") continue;
+				const key = String(row.label || "").trim().toLowerCase();
+				if(!key) continue;
+				map[key] = row.score;
+			}
+			return map;
+		}
+
+		function renderEventReport(detail){
+			const reportMap = normalizeReportMap(detail.report);
+			const eventType = String(detail.event_type || "").trim().toLowerCase();
+			let labels = [];
+
+			if(eventType === "image"){
+				labels = ["neutral", "low", "medium", "high"];
+			}else if(eventType === "text"){
+				labels = ["nsfw", "sfw"];
+			}else{
+				labels = Object.keys(reportMap);
+			}
+
+			if(!labels.length){
+				return `<p class="mutedSmall">No report data available for this event.</p>`;
+			}
+
+			let rows = "";
+			for(const label of labels){
+				const display = label === "nsfw" || label === "sfw" ? label.toUpperCase() : titleCase(label);
+				const score = scoreToPercent(reportMap[label] ?? 0);
+				rows += `
+					<div class="eventViewer__reportRow">
+						<span>${escapeHtml(display)}</span>
+						<strong>${escapeHtml(score)}</strong>
+					</div>
+				`;
+			}
+			return `<div class="eventViewer__reportRows">${rows}</div>`;
+		}
+
 		function renderEvents(events){
 			if(events.length===0){
 				document.getElementById("eventsContainer").innerHTML="No events.";
@@ -314,56 +365,93 @@
 			document.body.classList.remove("modal-open");
 		}
 
+		function wireEventImage(detail){
+			const imageEl = document.getElementById("eventViewImage");
+			const imageStateEl = document.getElementById("eventViewImageState");
+			const blurToggle = document.getElementById("eventBlurToggle");
+			if(!imageEl || !blurToggle) return;
+
+			imageEl.classList.add("is-blurred", "is-loading");
+			blurToggle.textContent = "Show Unblurred";
+			blurToggle.setAttribute("aria-pressed", "false");
+			blurToggle.disabled = true;
+
+			if(!(detail.image_data && detail.image_mime)){
+				if(imageStateEl) imageStateEl.textContent = "No image attached to this event.";
+				return;
+			}
+
+			const imageSrc = `data:${detail.image_mime};base64,${detail.image_data}`;
+			const preloaded = new Image();
+			preloaded.onload = function(){
+				imageEl.src = imageSrc;
+				imageEl.classList.remove("is-loading");
+				blurToggle.disabled = false;
+				if(imageStateEl) imageStateEl.remove();
+			};
+			preloaded.onerror = function(){
+				if(imageStateEl) imageStateEl.textContent = "Unable to load event image.";
+			};
+			preloaded.src = imageSrc;
+
+			blurToggle.addEventListener("click", function(){
+				const nowBlurred = imageEl.classList.toggle("is-blurred");
+				blurToggle.textContent = nowBlurred ? "Show Unblurred" : "Enable Blur";
+				blurToggle.setAttribute("aria-pressed", nowBlurred ? "false" : "true");
+			});
+		}
+
 		async function openEventModal(eventId){
 			if(!eventId) return;
 			modalContent.innerHTML = "Loading...";
 			openModal();
 			try{
 				const detail = await fetchEventDetails(eventId);
-				const severity = normalizeSeverity(detail.severity);
 				const timestamp = formatTimestamp(detail.timestamp);
-				let mediaHtml = "";
-				if(detail.image_data && detail.image_mime){
-					mediaHtml += `
-						<div class="eventMedia__item">
-							<img src="data:${detail.image_mime};base64,${detail.image_data}" alt="Event capture image" />
-						</div>
-					`;
-				}
+				const reportHtml = renderEventReport(detail);
+				let audioHtml = "";
 				if(detail.audio_data && detail.audio_mime){
-					mediaHtml += `
-						<div class="eventMedia__item">
+					audioHtml = `
+						<div class="eventViewer__audio">
+							<p class="mutedSmall">Audio</p>
 							<audio controls src="data:${detail.audio_mime};base64,${detail.audio_data}"></audio>
 						</div>
 					`;
 				}
-				if(!mediaHtml){
-					mediaHtml = `<p class="mutedSmall">No media attached to this event.</p>`;
-				}
 
 				modalContent.innerHTML = `
-					<div class="eventMeta">
-						<div>
-							<p class="mutedSmall">Event Type</p>
-							<p>${escapeHtml(titleCase(detail.event_type))}</p>
+					<div class="eventViewer">
+						<div class="eventViewer__left">
+							<div class="eventViewer__imagePanel">
+								<p id="eventViewImageState" class="mutedSmall eventViewer__imageState">Loading image...</p>
+								<img id="eventViewImage" class="eventViewer__image is-blurred is-loading" alt="Event capture image" />
+							</div>
+							<button id="eventBlurToggle" class="btnSecondary eventViewer__toggle" type="button" aria-pressed="false" disabled>
+								Show Unblurred
+							</button>
 						</div>
-						<div>
-							<p class="mutedSmall">Device Name</p>
-							<p>${escapeHtml(detail.device_name || "Unknown")}</p>
-						</div>
-						<div>
-							<p class="mutedSmall">Severity</p>
-							<p><span class="badge ${severity.cls}">${severity.label}</span></p>
-						</div>
-						<div>
+						<div class="eventViewer__right">
 							<p class="mutedSmall">Timestamp</p>
-							<p>${escapeHtml(timestamp)}</p>
+							<p class="eventViewer__value">${escapeHtml(timestamp)}</p>
+							<div class="eventViewer__metaRow">
+								<div>
+									<p class="mutedSmall">Device Name</p>
+									<p class="eventViewer__value">${escapeHtml(detail.device_name || "Unknown")}</p>
+								</div>
+								<div>
+									<p class="mutedSmall">Event Type</p>
+									<p class="eventViewer__value">${escapeHtml(titleCase(detail.event_type))}</p>
+								</div>
+							</div>
+							<div class="eventViewer__report">
+								<p class="mutedSmall">Report</p>
+								${reportHtml}
+							</div>
+							${audioHtml}
 						</div>
-					</div>
-					<div class="eventMedia">
-						${mediaHtml}
 					</div>
 				`;
+				wireEventImage(detail);
 			}catch(err){
 				modalContent.innerHTML = "<p class=\"mutedSmall\">Unable to load event details.</p>";
 			}

@@ -7,7 +7,7 @@ from random import choice
 from typing import Optional
 from pathlib import Path
 from hashlib import sha256
-from lib.database import create_db, query_db, execute_db, ensure_device_name_unique
+from lib.database import create_db, query_db, execute_db
 import uvicorn, secrets, json, base64, mimetypes
 
 class WebPortal:
@@ -28,11 +28,6 @@ class WebPortal:
 		templates = Jinja2Templates(directory=str(self.base_dir / "portal/templates"))
 		legal_acceptance_path = self.base_dir / "legal_acceptance.json"
 
-		@self.app.on_event("startup")
-		async def _startup():
-			if (self.base_dir / "cerberus.db").exists():
-				ensure_device_name_unique()
-		
 		def verify_session(request:Request, redirect:bool = True):
 			token = request.cookies.get("session")	
 			if not token:
@@ -239,6 +234,51 @@ class WebPortal:
 		
 		@self.app.post("/api/events")
 		async def api_events(request:Request, page:int, count:int):
+			def parse_report(report_value):
+				if report_value is None:
+					return []
+				if isinstance(report_value, (list, dict)):
+					return report_value
+				if isinstance(report_value, str):
+					try:
+						return json.loads(report_value)
+					except Exception:
+						return []
+				return []
+
+			def severity_from_report(report_payload, event_type):
+				if not isinstance(report_payload, list):
+					return "low"
+
+				if str(event_type or "").lower() == "text":
+					nsfw_score = 0.0
+					for item in report_payload:
+						label = str(item.get("label", "")).strip().upper() if isinstance(item, dict) else ""
+						score = float(item.get("score", 0.0)) if isinstance(item, dict) else 0.0
+						if label == "NSFW":
+							nsfw_score = score
+							break
+					if nsfw_score >= 0.85:
+						return "high"
+					if nsfw_score >= 0.65:
+						return "medium"
+					if nsfw_score >= 0.45:
+						return "low"
+					return "neutral"
+
+				order = {"neutral": 0, "low": 1, "medium": 2, "high": 3}
+				best_label = "neutral"
+				best_score = -1.0
+				for item in report_payload:
+					if not isinstance(item, dict):
+						continue
+					label = str(item.get("label", "")).strip().lower()
+					score = float(item.get("score", 0.0))
+					if score > best_score and label in order:
+						best_score = score
+						best_label = label
+				return best_label
+
 			page = max(page, 1)
 			count = max(min(count,1000),1)
 			offset = (page - 1) * count
@@ -254,8 +294,8 @@ class WebPortal:
 					e.event_id,
 					d.device_name AS device_name,
 					t.name AS event_type,
-					json_extract(e.report, '$.severity') AS severity,
-					json_extract(e.report, '$.timestamp') AS timestamp
+					e.report,
+					e.timestamp
 				FROM events e
 				LEFT JOIN devices d ON e.device = d.device_id
 				LEFT JOIN event_types t ON e.event_type = t.event_type_id
@@ -264,11 +304,61 @@ class WebPortal:
 				""",
 				(count, offset)
 			)
+			for event in events:
+				report_payload = parse_report(event.get("report"))
+				event["severity"] = severity_from_report(report_payload, event.get("event_type"))
+				event["timestamp"] = event.get("timestamp")
+				event.pop("report", None)
 			return {"page": page, "count": count, "total_count": total_count, "events": events}
 		
 		# TODO: Make sure it can get events and images once everything else is setup.
 		@self.app.post("/api/event")
 		async def api_event(request:Request, event_id:int):
+			def parse_report(report_value):
+				if report_value is None:
+					return []
+				if isinstance(report_value, (list, dict)):
+					return report_value
+				if isinstance(report_value, str):
+					try:
+						return json.loads(report_value)
+					except Exception:
+						return []
+				return []
+
+			def severity_from_report(report_payload, event_type):
+				if not isinstance(report_payload, list):
+					return "low"
+
+				if str(event_type or "").lower() == "text":
+					nsfw_score = 0.0
+					for item in report_payload:
+						label = str(item.get("label", "")).strip().upper() if isinstance(item, dict) else ""
+						score = float(item.get("score", 0.0)) if isinstance(item, dict) else 0.0
+						if label == "NSFW":
+							nsfw_score = score
+							break
+					if nsfw_score >= 0.85:
+						return "high"
+					if nsfw_score >= 0.65:
+						return "medium"
+					if nsfw_score >= 0.45:
+						return "low"
+					return "neutral"
+
+				order = {"neutral": 0, "low": 1, "medium": 2, "high": 3}
+				best_label = "neutral"
+				best_score = -1.0
+				for item in report_payload:
+					if not isinstance(item, dict):
+						continue
+					label = str(item.get("label", "")).strip().lower()
+					score = float(item.get("score", 0.0))
+					if score > best_score and label in order:
+						best_score = score
+						best_label = label
+				return best_label
+
 			event_rows = query_db("""
 				SELECT
 					e.event_id,
@@ -277,7 +367,9 @@ class WebPortal:
 					e.full_image_path,
 					e.cell_image_path,
 					e.sound_path,
-					t.name AS event_type
+					t.name AS event_type,
+					e.timestamp,
+					e.text
 				FROM events e
 				LEFT JOIN devices d ON e.device = d.device_id
 				LEFT JOIN event_types t ON e.event_type = t.event_type_id
@@ -290,12 +382,8 @@ class WebPortal:
 				raise HTTPException(status_code=404, detail="Event not found")
 
 			row = event_rows[0]
-			report_data = {}
-			if row.get("report"):
-				try:
-					report_data = json.loads(row["report"])
-				except Exception:
-					report_data = {}
+			report_data = parse_report(row.get("report"))
+			severity = severity_from_report(report_data, row.get("event_type"))
 
 			def load_media(path_value:Optional[str]):
 				if not path_value:
@@ -317,8 +405,10 @@ class WebPortal:
 				"event_id": row.get("event_id"),
 				"event_type": row.get("event_type"),
 				"device_name": row.get("device_name"),
-				"severity": report_data.get("severity"),
-				"timestamp": report_data.get("timestamp"),
+				"severity": severity,
+				"timestamp": row.get("timestamp"),
+				"report": report_data,
+				"text": row.get("text"),
 				"image_data": image_data,
 				"image_mime": image_mime,
 				"image_name": image_name,
@@ -397,8 +487,20 @@ class WebPortal:
 			elif form_type == "discord_webhook":
 				discord_webhook = str(form.get("discord_webhook", "")).strip()
 				if discord_webhook:
-					execute_db("DELETE FROM settings WHERE profile = ?", ("discord_webhook",))
-					execute_db("INSERT INTO settings (profile, discord_webhook) VALUES (?, ?)", ("discord_webhook", discord_webhook))
+					existing = query_db(
+						"SELECT setting_id FROM settings WHERE profile = ?",
+						("Default",)
+					)
+					if existing:
+						execute_db(
+							"UPDATE settings SET discord_webhook = ? WHERE setting_id = ?",
+							(discord_webhook, existing[0]["setting_id"])
+						)
+					else:
+						execute_db(
+							"INSERT INTO settings (profile, discord_webhook) VALUES (?, ?)",
+							("Default", discord_webhook)
+						)
 			return RedirectResponse("/settings", status_code=303)
 		
 		
@@ -410,4 +512,9 @@ class WebPortal:
 			return error(request, str(e))
 	
 	def run(self):
-		uvicorn.run(self.app, host=self.host, port=self.port)
+		uvicorn.run(
+			self.app,
+			host=self.host,
+			port=self.port,
+			log_level="warning"
+		)

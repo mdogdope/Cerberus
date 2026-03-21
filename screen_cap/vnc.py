@@ -9,7 +9,6 @@ class VNC:
 		self.port = port
 		self.password = password
 		self.client = None
-		self.connect()
 	
 	def connect(self):
 		try:
@@ -27,11 +26,23 @@ class VNC:
 		
 		try:
 			self.client.refreshScreen()
-			return self.client.screen
+			img = self.client.screen
+			if img is None:
+				raise VNCConnectionError("No Image returned")
+			return img
 		except Exception as e:
 			self.client = None
 			raise VNCConnectionError("Failed to get screen") from e
 	
+	def get_ip(self):
+		return self.ip_address
+	
+	def is_connected(self):
+		try:
+			self.client.refreshScreen()
+			return True
+		except Exception:
+			return False
 	def reconnect(self):
 		self.client = None
 		self.connect()

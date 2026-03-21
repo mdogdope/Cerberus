@@ -765,47 +765,120 @@ body.modal-open{
 	gap: 16px;
 }
 
-.eventMeta{
+.eventViewer{
+	flex: 1;
+	min-height: 0;
 	display: grid;
-	grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-	gap: 12px;
+	grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+	gap: 18px;
 }
 
-.eventMedia{
+.eventViewer__left{
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	min-height: 0;
+}
+
+.eventViewer__imagePanel{
 	flex: 1;
 	min-height: 0;
 	display: flex;
-	flex-wrap: wrap;
 	align-items: center;
 	justify-content: center;
-	gap: 16px;
 	border-radius: 16px;
 	border: 1px dashed rgba(255, 255, 255, 0.16);
-	padding: 16px;
 	background: rgba(255, 255, 255, 0.05);
+	padding: 12px;
+	position: relative;
+	overflow: hidden;
 }
 
-.eventMedia__item{
-	max-width: 100%;
-	max-height: 100%;
-	display: flex;
-	align-items: center;
-	justify-content: center;
+.eventViewer__imageState{
+	text-align: center;
 }
 
-.eventMedia img{
+.eventViewer__image{
 	max-width: 100%;
 	max-height: 100%;
+	display: block;
 	border-radius: 12px;
 	box-shadow: var(--shadow);
+	filter: blur(20px);
+	transition: filter 180ms ease, opacity 180ms ease;
 }
 
-.eventMedia audio{
-	width: min(520px, 100%);
+.eventViewer__image.is-loading{
+	opacity: 0;
+}
+
+.eventViewer__image:not(.is-blurred){
+	filter: blur(0);
+}
+
+.eventViewer__toggle{
+	width: 100%;
+}
+
+.eventViewer__right{
+	display: flex;
+	flex-direction: column;
+	gap: 14px;
+	min-height: 0;
+}
+
+.eventViewer__value{
+	margin: 4px 0 0 0;
+	font-size: 16px;
+	font-weight: 600;
+}
+
+.eventViewer__metaRow{
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px;
+}
+
+.eventViewer__report{
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+}
+
+.eventViewer__reportRows{
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.eventViewer__reportRow{
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 10px 12px;
+	border-radius: 12px;
+	background: rgba(255, 255, 255, 0.07);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.eventViewer__audio{
+	margin-top: auto;
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.eventViewer__audio audio{
+	width: 100%;
 }
 
 @media (max-width: 900px){
 	.stats{
+		grid-template-columns: 1fr;
+	}
+
+	.eventViewer{
 		grid-template-columns: 1fr;
 	}
 }
@@ -837,6 +910,10 @@ body.modal-open{
 
 	.card{
 		padding: 24px;
+	}
+
+	.eventViewer__metaRow{
+		grid-template-columns: 1fr;
 	}
 }
 
