@@ -7,3 +7,4 @@ desktop.ini
 *.json
 ~*
 PROJECT_*
+*.log
