@@ -1,3 +1,4 @@
+import os
 from transformers import AutoImageProcessor, AutoModelForImageClassification, AutoModelForImageTextToText, AutoProcessor, AutoTokenizer, AutoModelForSequenceClassification
 import torch, gc
 from typing import Optional, Any
@@ -5,6 +6,8 @@ from PIL import Image
 from huggingface_hub import snapshot_download
 from huggingface_hub.errors import LocalEntryNotFoundError
 import re
+
+os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
 _CPU_MODE_SETTINGS_APPLIED = False
 
@@ -234,7 +237,7 @@ class NSFWImageDetector:
 
 class NSFWTextDetector:
 	"""Detect NSFW or SFW content in text."""
-	MODEL_ID: str = "michelleli99/NSFW_text_classifier"
+	MODEL_ID: str = "eliasalbouzidi/distilbert-nsfw-text-classifier"
 
 	def __init__(self, cache_dir: str = "./models/hf", cpu_mode: bool = False):
 		self.tokenizer = None
@@ -357,7 +360,7 @@ class NSFWTextDetector:
 
 class TextExtractor:
 	"""Extract text from images with GLM-OCR."""
-	MODEL_ID: str = "zai-org/GLM-OCR"
+	MODEL_ID: str = "OpenGVLab/InternVL3-1B-hf"
 
 	def __init__(self, cache_dir: str = "./models/hf", cpu_mode: bool = False):
 		self.processor = None
@@ -470,8 +473,22 @@ class TextExtractor:
 			if "token_type_ids" in inputs:
 				inputs.pop("token_type_ids")
 
+			pad_token_id = self.tokenizer.eos_token_id
+			if pad_token_id is None:
+				pad_token_id = self.model.config.eos_token_id
+
 			with torch.no_grad():
-				output_ids = self.model.generate(**inputs, max_new_tokens=max_new_tokens)
+				if pad_token_id is not None:
+					output_ids = self.model.generate(
+						**inputs,
+						max_new_tokens=max_new_tokens,
+						pad_token_id=pad_token_id,
+					)
+				else:
+					output_ids = self.model.generate(
+						**inputs,
+						max_new_tokens=max_new_tokens,
+					)
 
 			input_len = inputs["input_ids"].shape[1]
 			output_text = self.processor.decode(output_ids[0][input_len:], skip_special_tokens=True)

@@ -7,8 +7,14 @@ from random import choice
 from typing import Optional
 from pathlib import Path
 from hashlib import sha256
-from lib.database import create_db, query_db, execute_db
+from lib.database import create_db, query_db, execute_db, db_exists
+import logging
 import uvicorn, secrets, json, base64, mimetypes
+
+logger = logging.getLogger("cerberus.portal")
+if not logging.getLogger().handlers:
+	logging.basicConfig(level=logging.INFO)
+logger.setLevel(logging.INFO)
 
 class WebPortal:
 	def __init__(self, host:str = "0.0.0.0", port:int = 80, session_ttl:int = 12, persistant_ttl: int = 720):
@@ -19,6 +25,7 @@ class WebPortal:
 		self.base_dir = Path(__file__).resolve().parent.parent
 		self.app = FastAPI()
 		self.device_status = {}
+		self._table_columns_cache:dict[str, set[str]] = {}
 		self._setup_routes()
 		self.init_setup = False
 	
@@ -74,11 +81,22 @@ class WebPortal:
 		
 		def hash_password(password:str):
 			return sha256(password.encode()).hexdigest()
+
+		def get_table_columns(table_name:str):
+			cache = getattr(self, "_table_columns_cache", {})
+			if table_name in cache:
+				return cache[table_name]
+			rows = query_db(f"PRAGMA table_info({table_name})", ())
+			columns = {str(row.get("name", "")).strip() for row in rows if row.get("name")}
+			cache[table_name] = columns
+			self._table_columns_cache = cache
+			return columns
 		
 		
 		@self.app.get("/", name="root", response_class = HTMLResponse)
 		async def root(request:Request):
 			if not legal_acceptance_path.exists():
+				self.init_setup = True
 				with open(legal_acceptance_path, "w", encoding="utf-8") as f:
 					json.dump({"DISCLAIMER": False, "EULA": False, "PRIVACY": False}, f)
 			
@@ -87,9 +105,7 @@ class WebPortal:
 				for doc, status in legal_acc.items():
 					if not status:
 						return templates.TemplateResponse("legal_doc.html", {"request": request, "doc_path": f"/static/LEGAL/{doc}.html", "title": doc})
-			if not (self.base_dir / "cerberus.db").exists():
-				create_db()
-				self.init_setup = True
+			if self.init_setup:
 				return templates.TemplateResponse("register.html", {"request": request}, status_code=200)
 			
 			try:
@@ -313,109 +329,183 @@ class WebPortal:
 		
 		# TODO: Make sure it can get events and images once everything else is setup.
 		@self.app.post("/api/event")
-		async def api_event(request:Request, event_id:int):
-			def parse_report(report_value):
-				if report_value is None:
-					return []
-				if isinstance(report_value, (list, dict)):
-					return report_value
-				if isinstance(report_value, str):
+		async def api_event(request:Request, event_id:Optional[int] = None):
+			resolved_event_id = event_id
+			try:
+				if resolved_event_id is None:
+					raw_query_id = request.query_params.get("event_id")
+					if raw_query_id is not None and str(raw_query_id).strip() != "":
+						try:
+							resolved_event_id = int(str(raw_query_id).strip())
+						except Exception:
+							raise HTTPException(status_code=400, detail="Invalid event_id query parameter")
+				if resolved_event_id is None:
 					try:
-						return json.loads(report_value)
+						payload = await request.json()
 					except Exception:
+						payload = None
+					if isinstance(payload, dict) and payload.get("event_id") is not None:
+						try:
+							resolved_event_id = int(payload.get("event_id"))  # type: ignore
+						except Exception:
+							raise HTTPException(status_code=400, detail="Invalid event_id in JSON body")
+				if resolved_event_id is None:
+					try:
+						form = await request.form()
+					except Exception:
+						form = None
+					if form and form.get("event_id") is not None:
+						try:
+							resolved_event_id = int(form.get("event_id")) # type: ignore
+						except Exception:
+							raise HTTPException(status_code=400, detail="Invalid event_id in form body")
+				if resolved_event_id is None:
+					raise HTTPException(status_code=400, detail="Missing event_id")
+				if resolved_event_id <= 0:
+					raise HTTPException(status_code=400, detail="event_id must be greater than 0")
+
+				logger.info("api_event(): request event_id=%s", resolved_event_id)
+
+				def parse_report(report_value):
+					if report_value is None:
 						return []
-				return []
+					if isinstance(report_value, (list, dict)):
+						return report_value
+					if isinstance(report_value, str):
+						try:
+							return json.loads(report_value)
+						except Exception:
+							return []
+					return []
 
-			def severity_from_report(report_payload, event_type):
-				if not isinstance(report_payload, list):
-					return "low"
-
-				if str(event_type or "").lower() == "text":
-					nsfw_score = 0.0
-					for item in report_payload:
-						label = str(item.get("label", "")).strip().upper() if isinstance(item, dict) else ""
-						score = float(item.get("score", 0.0)) if isinstance(item, dict) else 0.0
-						if label == "NSFW":
-							nsfw_score = score
-							break
-					if nsfw_score >= 0.85:
-						return "high"
-					if nsfw_score >= 0.65:
-						return "medium"
-					if nsfw_score >= 0.45:
+				def severity_from_report(report_payload, event_type):
+					if not isinstance(report_payload, list):
 						return "low"
-					return "neutral"
 
-				order = {"neutral": 0, "low": 1, "medium": 2, "high": 3}
-				best_label = "neutral"
-				best_score = -1.0
-				for item in report_payload:
-					if not isinstance(item, dict):
-						continue
-					label = str(item.get("label", "")).strip().lower()
-					score = float(item.get("score", 0.0))
-					if score > best_score and label in order:
-						best_score = score
-						best_label = label
-				return best_label
+					if str(event_type or "").lower() == "text":
+						nsfw_score = 0.0
+						for item in report_payload:
+							label = str(item.get("label", "")).strip().upper() if isinstance(item, dict) else ""
+							score = float(item.get("score", 0.0)) if isinstance(item, dict) else 0.0
+							if label == "NSFW":
+								nsfw_score = score
+								break
+						if nsfw_score >= 0.85:
+							return "high"
+						if nsfw_score >= 0.65:
+							return "medium"
+						if nsfw_score >= 0.45:
+							return "low"
+						return "neutral"
 
-			event_rows = query_db("""
-				SELECT
-					e.event_id,
-					d.device_name AS device_name,
-					e.report,
-					e.full_image_path,
-					e.cell_image_path,
-					e.sound_path,
-					t.name AS event_type,
-					e.timestamp,
-					e.text
-				FROM events e
-				LEFT JOIN devices d ON e.device = d.device_id
-				LEFT JOIN event_types t ON e.event_type = t.event_type_id
-				WHERE e.event_id = ?
-				LIMIT 1
-				""",
-				(event_id,)
-			)
-			if not event_rows:
-				raise HTTPException(status_code=404, detail="Event not found")
+					order = {"neutral": 0, "low": 1, "medium": 2, "high": 3}
+					best_label = "neutral"
+					best_score = -1.0
+					for item in report_payload:
+						if not isinstance(item, dict):
+							continue
+						label = str(item.get("label", "")).strip().lower()
+						score = float(item.get("score", 0.0))
+						if score > best_score and label in order:
+							best_score = score
+							best_label = label
+					return best_label
 
-			row = event_rows[0]
-			report_data = parse_report(row.get("report"))
-			severity = severity_from_report(report_data, row.get("event_type"))
+				event_columns = get_table_columns("events")
+				text_select = "e.text" if "text" in event_columns else "NULL AS text"
+				full_image_select = "e.full_image_path" if "full_image_path" in event_columns else "NULL AS full_image_path"
+				cell_image_select = "e.cell_image_path" if "cell_image_path" in event_columns else "NULL AS cell_image_path"
+				sound_select = "e.sound_path" if "sound_path" in event_columns else "NULL AS sound_path"
+				report_select = "e.report" if "report" in event_columns else "NULL AS report"
 
-			def load_media(path_value:Optional[str]):
-				if not path_value:
-					return None, None, None
-				path = Path(path_value)
-				if not path.exists() or not path.is_file():
-					return None, None, None
-				mime, _ = mimetypes.guess_type(str(path))
-				if not mime:
-					mime = "application/octet-stream"
-				data = base64.b64encode(path.read_bytes()).decode("ascii")
-				return data, mime, path.name
+				event_rows = query_db(f"""
+					SELECT
+						e.event_id,
+						d.device_name AS device_name,
+						{report_select},
+						{full_image_select},
+						{cell_image_select},
+						{sound_select},
+						t.name AS event_type,
+						e.timestamp,
+						{text_select}
+					FROM events e
+					LEFT JOIN devices d ON e.device = d.device_id
+					LEFT JOIN event_types t ON e.event_type = t.event_type_id
+					WHERE e.event_id = ?
+					LIMIT 1
+					""",
+					(resolved_event_id,)
+				)
+				if not event_rows:
+					raise HTTPException(status_code=404, detail="Event not found")
 
-			image_path = row.get("full_image_path") or row.get("cell_image_path")
-			image_data, image_mime, image_name = load_media(image_path)
-			audio_data, audio_mime, audio_name = load_media(row.get("sound_path"))
+				row = event_rows[0]
+				report_data = parse_report(row.get("report"))
+				severity = severity_from_report(report_data, row.get("event_type"))
 
-			return {
-				"event_id": row.get("event_id"),
-				"event_type": row.get("event_type"),
-				"device_name": row.get("device_name"),
-				"severity": severity,
-				"timestamp": row.get("timestamp"),
-				"report": report_data,
-				"text": row.get("text"),
-				"image_data": image_data,
-				"image_mime": image_mime,
-				"image_name": image_name,
-				"audio_data": audio_data,
-				"audio_mime": audio_mime,
-				"audio_name": audio_name,
-			}
+				def load_media(path_value:Optional[str]):
+					if not path_value:
+						return None, None, None
+					raw_path = Path(str(path_value))
+					candidates = []
+					if raw_path.is_absolute():
+						candidates.append(raw_path)
+					else:
+						# Try common roots so relative DB paths work no matter current working directory.
+						candidates.append(self.base_dir / raw_path)
+						candidates.append(Path.cwd() / raw_path)
+						candidates.append(raw_path)
+						if raw_path.name:
+							candidates.append(self.base_dir / "events" / raw_path.name)
+
+					seen = set()
+					resolved_path = None
+					for candidate in candidates:
+						key = str(candidate)
+						if key in seen:
+							continue
+						seen.add(key)
+						if candidate.exists() and candidate.is_file():
+							resolved_path = candidate
+							break
+
+					if resolved_path is None:
+						return None, None, None
+
+					mime, _ = mimetypes.guess_type(str(resolved_path))
+					if not mime:
+						mime = "application/octet-stream"
+					data = base64.b64encode(resolved_path.read_bytes()).decode("ascii")
+					return data, mime, resolved_path.name
+
+				image_data, image_mime, image_name = load_media(row.get("full_image_path"))
+				if image_data is None:
+					image_data, image_mime, image_name = load_media(row.get("cell_image_path"))
+				audio_data, audio_mime, audio_name = load_media(row.get("sound_path"))
+
+				return {
+					"event_id": row.get("event_id"),
+					"event_type": row.get("event_type"),
+					"device_name": row.get("device_name"),
+					"severity": severity,
+					"timestamp": row.get("timestamp"),
+					"report": report_data,
+					"text": row.get("text"),
+					"image_data": image_data,
+					"image_mime": image_mime,
+					"image_name": image_name,
+					"audio_data": audio_data,
+					"audio_mime": audio_mime,
+					"audio_name": audio_name,
+				}
+			except HTTPException:
+				raise
+			except Exception:
+				# TODO: Remove the print
+				print(f"api_event(): Failed to load event details for event_id={resolved_event_id}", flush=True)
+				logger.exception("api_event(): Failed to load event details for event_id=%s", resolved_event_id)
+				raise HTTPException(status_code=500, detail=f"Could not load event details for event_id={resolved_event_id}")
 
 		@self.app.get("/api/device-status")
 		async def api_device_status_get(request:Request):

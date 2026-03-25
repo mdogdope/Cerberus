@@ -1,4 +1,6 @@
-import threading, logging, random, time, json, socket
+import os
+os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
+import threading, logging, random, time, json, socket, datetime
 from pathlib import Path
 from PIL import Image
 from queue import LifoQueue
@@ -17,7 +19,8 @@ logs_dir.mkdir(exist_ok=True)
 logger = logging.getLogger("cerberus.py")
 logger.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-file_logger = logging.FileHandler("logs/cerberus.log")
+log_timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+file_logger = logging.FileHandler(f"logs/cerberus_{log_timestamp}.log")
 file_logger.setLevel(logging.DEBUG)
 file_logger.setFormatter(formatter)
 console_logger = logging.StreamHandler()
@@ -35,6 +38,49 @@ vnc_ip = "127.0.0.1"
 vnc_port = 5900
 discord = DiscordWebhook()
 backlog = LifoQueue()
+
+
+def ensure_default_records():
+	device_row = query_db(
+		"SELECT device_id FROM devices WHERE device_name = ? LIMIT 1",
+		("Child PC",),
+	)
+	if not device_row:
+		execute_db(
+			"INSERT INTO devices (device_name, device_ip) VALUES (?, ?)",
+			("Child PC", vnc_ip),
+		)
+
+	settings_row = query_db(
+		"SELECT setting_id FROM settings WHERE profile = ? LIMIT 1",
+		("Default",),
+	)
+	if not settings_row:
+		execute_db(
+			"INSERT INTO settings (profile, backlog_count) VALUES (?, ?)",
+			("Default", 0),
+		)
+
+
+def get_device_id(device_name: str = "Child PC", default_ip: str | None = None) -> int:
+	device_row = query_db(
+		"SELECT device_id FROM devices WHERE device_name = ? LIMIT 1",
+		(device_name,),
+	)
+	if device_row:
+		return int(device_row[0]["device_id"])
+
+	execute_db(
+		"INSERT INTO devices (device_name, device_ip) VALUES (?, ?)",
+		(device_name, default_ip or vnc_ip),
+	)
+	device_row = query_db(
+		"SELECT device_id FROM devices WHERE device_name = ? LIMIT 1",
+		(device_name,),
+	)
+	if not device_row:
+		raise RuntimeError(f"Failed to resolve device id for {device_name}")
+	return int(device_row[0]["device_id"])
 
 
 def webserver():
@@ -93,18 +139,20 @@ def send_notification():
 		discord.send(url, "Something was found on Child PC")
 
 def create_event(result:dict):
-	# Not multi pc safe
 	try:
-		events_dir = Path("events")
+		project_dir = Path(__file__).resolve().parent
+		events_dir = project_dir / "events"
 		events_dir.mkdir(exist_ok=True)
+		device_id = get_device_id()
 		cols = "timestamp,device"
 		timestamp = timestamp = result["timestamp"].strftime("%Y%m%d_%H%M%S")
-		vals = [result["timestamp"], 0]
+		vals = [result["timestamp"], device_id]
 		if "image" in result:
 			cols += ",full_image_path"
 			filename = f"events/{timestamp}_full.png"
+			full_path = events_dir / f"{timestamp}_full.png"
 			img:Image.Image = result["image"]
-			img.save(filename)
+			img.save(full_path)
 			vals.append(filename)
 		if "results" in result:
 			cols += ",report"
@@ -112,8 +160,9 @@ def create_event(result:dict):
 		if "cell" in result:
 			cols += ",cell_image_path"
 			filename = f"events/{timestamp}_cell.png"
+			cell_path = events_dir / f"{timestamp}_cell.png"
 			img:Image.Image = result["cell"]
-			img.save(filename)
+			img.save(cell_path)
 			vals.append(filename)
 		if "text" in result:
 			cols += ",text,event_type"
@@ -164,6 +213,7 @@ def detect():
 # First time setups.
 if not db_exists():
 	create_db()
+ensure_default_records()
 models = [NSFWImageDetector(), NSFWTextDetector(), TextExtractor()]
 for m in models:
 	if not m.is_model_downloaded():

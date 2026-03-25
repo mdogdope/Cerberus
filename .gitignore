@@ -9,3 +9,5 @@ desktop.ini
 PROJECT_*
 /logs
 *.log
+**/__pycache__/
+detection/__pycache__/cerberus_models.cpython-311.pyc

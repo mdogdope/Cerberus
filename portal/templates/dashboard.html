@@ -165,12 +165,35 @@
 			return await fetchEvents(page, EVENTS_PER_PAGE);
 		}
 
-		async function fetchEventDetails(eventId){
-			const url = `/api/event?event_id=${eventId}`;
-			const res = await fetch(url, {method:"POST", credentials:"include"});
-			if(!res.ok) throw new Error("Failed to load event details");
-			return await res.json();
-		}
+			async function fetchEventDetails(eventId){
+				const normalizedId = Number(eventId);
+				if(!Number.isInteger(normalizedId) || normalizedId <= 0){
+					throw new Error(`Invalid event id: ${eventId}`);
+				}
+				const res = await fetch("/api/event", {
+					method:"POST",
+					credentials:"include",
+					headers: {"Content-Type":"application/json"},
+					body: JSON.stringify({event_id: normalizedId})
+				});
+				if(!res.ok){
+					let detail = "";
+					try{
+						const payload = await res.json();
+						if(payload && payload.detail){
+							if(Array.isArray(payload.detail)){
+								detail = payload.detail.map(function(item){
+									return item && item.msg ? String(item.msg) : JSON.stringify(item);
+								}).join("; ");
+							}else{
+								detail = String(payload.detail);
+							}
+						}
+					}catch(err){}
+					throw new Error(detail || `Failed to load event details (${res.status})`);
+				}
+				return await res.json();
+			}
 
 		function formatTimestamp(value){
 			if(!value) return "Unknown";
@@ -452,10 +475,12 @@
 					</div>
 				`;
 				wireEventImage(detail);
-			}catch(err){
-				modalContent.innerHTML = "<p class=\"mutedSmall\">Unable to load event details.</p>";
+				}catch(err){
+					const msg = (err && err.message) ? escapeHtml(err.message) : "Unable to load event details.";
+					modalContent.innerHTML = `<p class="mutedSmall">${msg}</p>`;
+					console.error("openEventModal() failed", err);
+				}
 			}
-		}
 
 		modal.addEventListener("click", function(event){
 			if(event.target && event.target.getAttribute("data-close") === "true"){
