@@ -1,16 +1,10 @@
 from transformers import AutoImageProcessor, AutoModelForImageClassification, AutoModelForImageTextToText, AutoProcessor, AutoTokenizer, AutoModelForSequenceClassification
 import torch, gc
 from typing import Optional, Any
-from pathlib import Path
 from PIL import Image
 from huggingface_hub import snapshot_download
 from huggingface_hub.errors import LocalEntryNotFoundError
 import re
-
-
-def _local_model_dir(cache_dir: str, model_id: str) -> Path:
-	return Path(cache_dir) / model_id.replace("/", "__")
-
 
 _CPU_MODE_SETTINGS_APPLIED = False
 
@@ -252,28 +246,18 @@ class NSFWTextDetector:
 		if self.cpu_mode:
 			_apply_cpu_mode_settings()
 
-	def _model_dir(self) -> Path:
-		return _local_model_dir(self.cache_dir, NSFWTextDetector.MODEL_ID)
-
 	def load(self):
-		model_dir = self._model_dir()
-		model_source = str(model_dir) if model_dir.exists() else NSFWTextDetector.MODEL_ID
+		self.tokenizer = AutoTokenizer.from_pretrained(
+			NSFWTextDetector.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
 
-		if model_dir.exists():
-			self.tokenizer = AutoTokenizer.from_pretrained(model_source)
-			self.model = AutoModelForSequenceClassification.from_pretrained(model_source)
-		else:
-			self.tokenizer = AutoTokenizer.from_pretrained(
-				model_source,
-				cache_dir=self.cache_dir,
-				local_files_only=True
-			)
-
-			self.model = AutoModelForSequenceClassification.from_pretrained(
-				model_source,
-				cache_dir=self.cache_dir,
-				local_files_only=True
-			)
+		self.model = AutoModelForSequenceClassification.from_pretrained(
+			NSFWTextDetector.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
 
 		self.device = torch.device("cpu" if self.cpu_mode else ("cuda:0" if torch.cuda.is_available() else "cpu"))
 		self.model.to(self.device)
@@ -298,15 +282,20 @@ class NSFWTextDetector:
 		return self.model is not None and self.tokenizer is not None and self.device is not None
 
 	def is_model_downloaded(self) -> bool:
-		model_dir = self._model_dir()
-		return model_dir.exists() and any(model_dir.iterdir())
+		try:
+			snapshot_download(
+				repo_id=NSFWTextDetector.MODEL_ID,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
+			return True
+		except LocalEntryNotFoundError:
+			return False
 
 	def download_model(self) -> None:
 		snapshot_download(
 			repo_id=NSFWTextDetector.MODEL_ID,
-			revision=None,
-			local_dir=str(self._model_dir()),
-			local_dir_use_symlinks=False
+			cache_dir=self.cache_dir
 		)
 
 	def classify(self, text: str, top_k: Optional[int] = None, empty_cuda_cache: bool = False) -> list[dict[str, Any]]:
@@ -381,9 +370,6 @@ class TextExtractor:
 		if self.cpu_mode:
 			_apply_cpu_mode_settings()
 
-	def _model_dir(self) -> Path:
-		return _local_model_dir(self.cache_dir, TextExtractor.MODEL_ID)
-
 	def _normalize_text(self, text: str) -> str:
 		"""Return OCR text in a classifier-friendly form."""
 		text = text.replace("\u00a0", " ")
@@ -393,31 +379,23 @@ class TextExtractor:
 		return text.strip()
 
 	def load(self):
-		model_dir = self._model_dir()
-		model_source = str(model_dir) if model_dir.exists() else TextExtractor.MODEL_ID
+		self.processor = AutoProcessor.from_pretrained(
+			TextExtractor.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
 
-		if model_dir.exists():
-			self.processor = AutoProcessor.from_pretrained(model_source)
-			self.tokenizer = AutoTokenizer.from_pretrained(model_source)
-			self.model = AutoModelForImageTextToText.from_pretrained(model_source)
-		else:
-			self.processor = AutoProcessor.from_pretrained(
-				model_source,
-				cache_dir=self.cache_dir,
-				local_files_only=True
-			)
+		self.tokenizer = AutoTokenizer.from_pretrained(
+			TextExtractor.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
 
-			self.tokenizer = AutoTokenizer.from_pretrained(
-				model_source,
-				cache_dir=self.cache_dir,
-				local_files_only=True
-			)
-
-			self.model = AutoModelForImageTextToText.from_pretrained(
-				model_source,
-				cache_dir=self.cache_dir,
-				local_files_only=True
-			)
+		self.model = AutoModelForImageTextToText.from_pretrained(
+			TextExtractor.MODEL_ID,
+			cache_dir=self.cache_dir,
+			local_files_only=True
+		)
 
 		self.device = torch.device("cpu" if self.cpu_mode else ("cuda:0" if torch.cuda.is_available() else "cpu"))
 		self.model.to(self.device) # type: ignore
@@ -443,15 +421,20 @@ class TextExtractor:
 		return self.model is not None and self.processor is not None and self.tokenizer is not None and self.device is not None
 
 	def is_model_downloaded(self) -> bool:
-		model_dir = self._model_dir()
-		return model_dir.exists() and any(model_dir.iterdir())
+		try:
+			snapshot_download(
+				repo_id=TextExtractor.MODEL_ID,
+				cache_dir=self.cache_dir,
+				local_files_only=True
+			)
+			return True
+		except LocalEntryNotFoundError:
+			return False
 
 	def download_model(self) -> None:
 		snapshot_download(
 			repo_id=TextExtractor.MODEL_ID,
-			revision=None,
-			local_dir=str(self._model_dir()),
-			local_dir_use_symlinks=False
+			cache_dir=self.cache_dir
 		)
 
 	def extract(self, image: Image.Image, prompt: str = "Text Recognition:", max_new_tokens: int = 512, empty_cuda_cache: bool = False) -> str:

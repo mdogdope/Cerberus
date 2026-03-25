@@ -1,4 +1,4 @@
-import threading, logging, random, time, datetime, json
+import threading, logging, random, time, json, socket
 from pathlib import Path
 from PIL import Image
 from queue import LifoQueue
@@ -11,16 +11,24 @@ import lib.image_compare as ImageCompare
 from screen_cap.vnc import VNC, VNCConnectionError
 from notification.discord import DiscordWebhook
 
-logging.basicConfig(
-	filename="cerberus.log",
-	level=logging.DEBUG,
-	format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-
-
+# Setup logging
+logs_dir = Path("logs")
+logs_dir.mkdir(exist_ok=True)
+logger = logging.getLogger("cerberus.py")
+logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+file_logger = logging.FileHandler("logs/cerberus.log")
+file_logger.setLevel(logging.DEBUG)
+file_logger.setFormatter(formatter)
+console_logger = logging.StreamHandler()
+console_logger.setLevel(logging.DEBUG)
+console_logger.setFormatter(formatter)
+logger.addHandler(file_logger)
+logger.addHandler(console_logger)
 
 CPU_MODE = False
-
+MAX_SEC = 0.5
+MIN_SEC = 0.1
 
 
 vnc_ip = "127.0.0.1"
@@ -33,7 +41,7 @@ def webserver():
 	portal = WebPortal()
 	portal.run()
 
-def check_vnc():
+def updated_vnc():
 	global vnc_ip
 	vnc_info = query_db("SELECT device_ip FROM devices WHERE device_name = ?", ("Child PC",))
 	if vnc_info:
@@ -42,17 +50,24 @@ def check_vnc():
 			return False
 	return True
 
+def is_vnc_open(ip, port, timeout=10):
+	try:
+		with socket.create_connection((ip, port), timeout=timeout):
+			return True
+	except Exception:
+		return False
+
 def vnc_client():
 	global backlog
-	logger = logging.getLogger("VNC_Thread")
-	check_vnc()
+	updated_vnc()
 	client = VNC(ip_address=vnc_ip, port=vnc_port)
 	prev_img = None
 	while True:
 		try:
-			if not check_vnc():
+			if updated_vnc():
 				client = VNC(ip_address=vnc_ip, port=vnc_port)
-				client.connect()
+				if is_vnc_open(vnc_ip, vnc_port):
+					client.connect()
 			if client.is_connected():
 				img = client.get_screenshot()
 				if prev_img:
@@ -60,11 +75,12 @@ def vnc_client():
 						backlog.put(img)
 				prev_img = img
 			else:
-				client.reconnect()
+				if is_vnc_open(vnc_ip, vnc_port):
+					client.reconnect()
 			
 		except VNCConnectionError as e:
-			logger.error(f"{e}")
-		time.sleep(random.randint(1, 10))
+			logger.error(f"vnc_client(): {e}")
+		time.sleep(random.uniform(MIN_SEC, MAX_SEC))
 
 def send_notification():
 	global discord
@@ -111,8 +127,7 @@ def create_event(result:dict):
 		execute_db(query=query, params=tuple(vals))
 		send_notification()
 	except Exception:
-		logger = logging.getLogger("Detect_Thread")
-		logger.exception("Could not make an event.")
+		logger.exception("detect(): Could not make an event.")
 
 def detect():
 	global backlog
@@ -138,8 +153,7 @@ def detect():
 				if not text_result["passed"]:
 					create_event(text_result)
 			except Exception:
-				logger = logging.getLogger("Detect_Thread")
-				logger.exception("Detection loop failed for an image.")
+				logger.exception("detect(): Detection loop failed for an image.")
 			finally:
 				img_det.unload()
 				txt_det.unload()
@@ -147,15 +161,25 @@ def detect():
 		time.sleep(0.01)
 
 
+# First time setups.
 if not db_exists():
 	create_db()
+models = [NSFWImageDetector(), NSFWTextDetector(), TextExtractor()]
+for m in models:
+	if not m.is_model_downloaded():
+		m.download_model()
 
+logger.info("Starting Web Portal Thread...")
 portal = threading.Thread(target=webserver, daemon=True)
 portal.start()
+logger.info("Starting VNC Client Thread...")
 vnc = threading.Thread(target=vnc_client, daemon=True)
 vnc.start()
+logger.info("Starting Detection Thread...")
 detector = threading.Thread(target=detect, daemon=True)
 detector.start()
+
+logger.info("Cerberus is now running")
 
 while True:
 	execute_db(

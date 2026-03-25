@@ -115,6 +115,31 @@
 					<p class="confirmMessage" role="status" aria-live="polite"></p>
 				</form>
 			</section>
+			<section class="card">
+				<h2 class="sectionTitle">Event Retention</h2>
+				<p class="muted sectionLead">Set how many days to keep old events before they are cleaned up.</p>
+				
+				<form class="form" method="post" action="/api/settings" data-form-type="retention_days" data-confirm-message="Event retention saved">
+					<input type="hidden" name="form_type" value="retention_days" />
+					<div class="nameRow">
+						<input
+							class="input"
+							id="retention_days"
+							name="retention_days"
+							type="number"
+							inputmode="numeric"
+							min="1"
+							max="3650"
+							step="1"
+							placeholder="30"
+							autocomplete="off"
+							value="{{ retention_days|default(30) }}"
+						/>
+						<button class="btnSecondary" type="submit" disabled>Save</button>
+					</div>
+					<p class="confirmMessage" role="status" aria-live="polite"></p>
+				</form>
+			</section>
 		</div>
 	</main>
 	
