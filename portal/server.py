@@ -11,11 +11,6 @@ from lib.database import create_db, query_db, execute_db, db_exists
 import logging
 import uvicorn, secrets, json, base64, mimetypes
 
-logger = logging.getLogger("cerberus.portal")
-if not logging.getLogger().handlers:
-	logging.basicConfig(level=logging.INFO)
-logger.setLevel(logging.INFO)
-
 class WebPortal:
 	def __init__(self, host:str = "0.0.0.0", port:int = 80, session_ttl:int = 12, persistant_ttl: int = 720):
 		self.host = host
@@ -363,9 +358,7 @@ class WebPortal:
 					raise HTTPException(status_code=400, detail="Missing event_id")
 				if resolved_event_id <= 0:
 					raise HTTPException(status_code=400, detail="event_id must be greater than 0")
-
-				logger.info("api_event(): request event_id=%s", resolved_event_id)
-
+				
 				def parse_report(report_value):
 					if report_value is None:
 						return []
@@ -502,9 +495,6 @@ class WebPortal:
 			except HTTPException:
 				raise
 			except Exception:
-				# TODO: Remove the print
-				print(f"api_event(): Failed to load event details for event_id={resolved_event_id}", flush=True)
-				logger.exception("api_event(): Failed to load event details for event_id=%s", resolved_event_id)
 				raise HTTPException(status_code=500, detail=f"Could not load event details for event_id={resolved_event_id}")
 
 		@self.app.get("/api/device-status")
