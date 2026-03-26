@@ -5,7 +5,7 @@ import sqlite3, stat, threading
 
 _WRITE_LOCK = threading.Lock()
 PROJECT_PATH = Path(__file__).resolve().parent.parent # Double parent to reach project folder
-DB_PATH = PROJECT_PATH / "cerberus.db"
+DB_PATH = PROJECT_PATH / "db/cerberus.db"
 SCHEMA_PATH = PROJECT_PATH / "schema.sql"
 
 def _open_ro():

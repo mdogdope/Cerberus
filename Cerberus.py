@@ -30,8 +30,8 @@ logger.addHandler(file_logger)
 logger.addHandler(console_logger)
 
 CPU_MODE = False
-MAX_SEC = 0.5
-MIN_SEC = 0.1
+MAX_SEC = 10
+MIN_SEC = 1
 
 
 vnc_ip = "127.0.0.1"
